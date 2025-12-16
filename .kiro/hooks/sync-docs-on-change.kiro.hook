@@ -1,0 +1,34 @@
+{
+  "enabled": true,
+  "name": "源代码文档同步",
+  "description": "监听源代码文件（如 *.ts, *.tsx, *.js, *.jsx, *.py, *.java, *.go, *.rs 等）的变化，当这些文件被编辑时，自动请求 Agent 更新 README.md 或 /docs 文件夹中的相关文档。",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": [
+      "**/*.ts",
+      "**/*.tsx",
+      "**/*.js",
+      "**/*.jsx",
+      "**/*.py",
+      "**/*.java",
+      "**/*.go",
+      "**/*.rs",
+      "**/*.c",
+      "**/*.cpp",
+      "**/*.h",
+      "**/*.hpp",
+      "**/*.cs",
+      "**/*.rb",
+      "**/*.php",
+      "**/package.json",
+      "**/pyproject.toml",
+      "**/Cargo.toml",
+      "**/go.mod"
+    ]
+  },
+  "then": {
+    "type": "askAgent",
+    "prompt": "检测到源代码文件发生变化。请检查修改的内容，并根据需要更新相关文档：\n\n1. 如果存在 /docs 文件夹，优先更新该文件夹中的相关文档\n2. 如果没有 /docs 文件夹，请更新 README.md\n\n更新文档时请确保：\n- 反映新增或修改的功能\n- 更新 API 文档（如适用）\n- 更新使用示例（如适用）\n- 保持文档与代码的一致性"
+  }
+}
