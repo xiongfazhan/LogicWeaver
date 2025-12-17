@@ -34,6 +34,42 @@ yarn-error.log*
 
 # Testing
 coverage/
+.coverage
+htmlcov/
+.pytest_cache/
+.hypothesis/
 
 # Misc
 *.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+develop-eggs/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Database
+*.db
+*.sqlite3
+
+# Uploads
+uploads/

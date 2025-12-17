@@ -1,0 +1,25 @@
+{
+  "name": "universal-sop-architect",
+  "version": "1.0.0",
+  "description": "Universal SOP Architect - 专家经验数字化编译平台",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "frontend:dev": "npm run dev --workspace=frontend",
+    "frontend:build": "npm run build --workspace=frontend",
+    "frontend:test": "npm run test --workspace=frontend",
+    "backend:dev": "cd backend && uvicorn app.main:app --reload",
+    "backend:test": "cd backend && pytest"
+  },
+  "keywords": [
+    "sop",
+    "workflow",
+    "ai",
+    "protocol"
+  ],
+  "author": "",
+  "license": "MIT"
+}
