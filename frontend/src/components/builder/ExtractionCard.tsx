@@ -22,6 +22,37 @@ interface ExtractionCardProps {
   isSaving?: boolean;
 }
 
+const KEYWORD_SUGGESTIONS = [
+  '漏油/渗漏',
+  '温度',
+  '压力',
+  '液位',
+  '异响',
+  '震动',
+  '松动',
+  '锈蚀',
+  '裂纹',
+  '磨损',
+  '指示灯/报警',
+  '电流',
+  '电压',
+] as const;
+
+const KEYWORD_TEMPLATES: { name: string; keywords: string[] }[] = [
+  {
+    name: '通用设备巡检',
+    keywords: ['外观', '渗漏', '松动', '异响', '温度', '压力', '报警'],
+  },
+  {
+    name: '泵/电机巡检',
+    keywords: ['漏油/渗漏', '异响', '震动', '温度', '电流', '压力'],
+  },
+  {
+    name: '电气柜巡检',
+    keywords: ['指示灯/报警', '异味/冒烟', '温度', '电压', '电流', '门锁/接地'],
+  },
+];
+
 export function ExtractionCard({ step, onUpdate, isSaving }: ExtractionCardProps) {
   const [keywords, setKeywords] = useState<string[]>(step.extraction_keywords || []);
   const [keywordInput, setKeywordInput] = useState('');
@@ -90,7 +121,7 @@ export function ExtractionCard({ step, onUpdate, isSaving }: ExtractionCardProps
     <div className="space-y-6">
       {/* 输入模式切换 */}
       <div className="space-y-3">
-        <Label className="text-base font-medium">选择输入方式</Label>
+        <Label className="text-base font-medium">选一种最方便的方式（任选一种即可）</Label>
         <div className="flex gap-2">
           <Button
             type="button"
@@ -98,7 +129,7 @@ export function ExtractionCard({ step, onUpdate, isSaving }: ExtractionCardProps
             size="sm"
             onClick={() => setInputMode('keywords')}
           >
-            🏷️ 关键词输入
+            🏷️ 写几个要看的点
           </Button>
           <Button
             type="button"
@@ -106,18 +137,21 @@ export function ExtractionCard({ step, onUpdate, isSaving }: ExtractionCardProps
             size="sm"
             onClick={() => setInputMode('voice')}
           >
-            🎤 语音描述
+            🎤 说一句话
           </Button>
         </div>
+        <p className="text-xs text-slate-500">
+          这一步的目的：告诉 AI 你“检查时关注哪些点”，后面才能写判断规则。
+        </p>
       </div>
 
       {/* 关键词输入模式 */}
       {inputMode === 'keywords' && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">🏷️ 提取关键词</CardTitle>
+            <CardTitle className="text-base">🏷️ 写要看的点（关键词）</CardTitle>
             <CardDescription>
-              输入需要从上下文中提取的关键信息字段
+              每个点写一个词/短语，越具体越好（例如：漏油、温度、压力、异响）。
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -127,7 +161,7 @@ export function ExtractionCard({ step, onUpdate, isSaving }: ExtractionCardProps
                 value={keywordInput}
                 onChange={(e) => setKeywordInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="输入关键词后按 Enter 添加..."
+                placeholder="例如：漏油（按 Enter 添加）"
                 className="flex-1"
               />
               <Button
@@ -162,9 +196,9 @@ export function ExtractionCard({ step, onUpdate, isSaving }: ExtractionCardProps
 
             {/* 常用关键词建议 */}
             <div className="pt-2 border-t">
-              <p className="text-xs text-slate-500 mb-2">常用关键词示例：</p>
+              <p className="text-xs text-slate-500 mb-2">常用关键词示例（点一下就加进去）：</p>
               <div className="flex flex-wrap gap-1">
-                {['金额', '日期', '客户名称', '订单号', '状态', '备注'].map((suggestion) => (
+                {KEYWORD_SUGGESTIONS.map((suggestion) => (
                   <button
                     key={suggestion}
                     type="button"
@@ -183,6 +217,29 @@ export function ExtractionCard({ step, onUpdate, isSaving }: ExtractionCardProps
                 ))}
               </div>
             </div>
+
+            {/* 模板 */}
+            <div className="pt-2 border-t">
+              <p className="text-xs text-slate-500 mb-2">常用模板（可选）：</p>
+              <div className="flex flex-wrap gap-2">
+                {KEYWORD_TEMPLATES.map((tpl) => (
+                  <Button
+                    key={tpl.name}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const merged = Array.from(new Set([...keywords, ...tpl.keywords]));
+                      setKeywords(merged);
+                      onUpdate({ extraction_keywords: merged });
+                    }}
+                  >
+                    {tpl.name}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-xs text-slate-400 mt-2">模板只是起点，你可以再删改成自己的检查点。</p>
+            </div>
           </CardContent>
         </Card>
       )}
@@ -191,16 +248,16 @@ export function ExtractionCard({ step, onUpdate, isSaving }: ExtractionCardProps
       {inputMode === 'voice' && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">🎤 语音描述</CardTitle>
+            <CardTitle className="text-base">🎤 说一句话（系统自动拆成关键词）</CardTitle>
             <CardDescription>
-              用自然语言描述需要提取的信息
+              不用专业术语，像交代徒弟一样说清楚你要关注什么。
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <Textarea
               value={voiceTranscript}
               onChange={(e) => handleVoiceChange(e.target.value)}
-              placeholder="例如：我需要提取订单中的金额、日期和客户名称..."
+              placeholder="例如：重点看压力表读数、接口有没有渗漏、泵有没有异响和异常震动。"
               className="min-h-[120px]"
             />
             
@@ -211,7 +268,7 @@ export function ExtractionCard({ step, onUpdate, isSaving }: ExtractionCardProps
               onClick={extractKeywordsFromVoice}
               disabled={!voiceTranscript.trim()}
             >
-              从描述中提取关键词
+              一键提取关键词
             </Button>
 
             {/* 显示已提取的关键词 */}
@@ -240,12 +297,12 @@ export function ExtractionCard({ step, onUpdate, isSaving }: ExtractionCardProps
       {/* 提取结果预览 */}
       <Card className="bg-slate-50">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm text-slate-600">提取配置预览</CardTitle>
+          <CardTitle className="text-sm text-slate-600">本步预览</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="text-sm">
             <p className="text-slate-500">
-              将从上下文中提取以下 <span className="font-medium text-indigo-600">{keywords.length}</span> 个字段：
+              AI 将重点检查以下 <span className="font-medium text-indigo-600">{keywords.length}</span> 个点：
             </p>
             {keywords.length > 0 ? (
               <p className="mt-1 text-slate-700">{keywords.join('、')}</p>

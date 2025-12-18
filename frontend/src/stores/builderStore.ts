@@ -21,10 +21,10 @@ export const MICRO_STEP_ORDER: MicroStep[] = ['context', 'extraction', 'logic', 
  * Micro-Step 显示名称
  */
 export const MICRO_STEP_LABELS: Record<MicroStep, string> = {
-  context: 'Context',
-  extraction: 'Extraction',
-  logic: 'Logic',
-  routing: 'Routing',
+  context: '看哪里',
+  extraction: '找什么',
+  logic: '怎么判',
+  routing: '下一步',
 };
 
 /**

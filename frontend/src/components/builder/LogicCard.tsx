@@ -32,6 +32,11 @@ export function LogicCard({ step, onUpdate, isSaving }: LogicCardProps) {
   );
   const [ruleExpression, setRuleExpression] = useState(step.logic_rule_expression || '');
   const [evaluationPrompt, setEvaluationPrompt] = useState(step.logic_evaluation_prompt || '');
+
+  const [isAddingPassText, setIsAddingPassText] = useState(false);
+  const [isAddingFailText, setIsAddingFailText] = useState(false);
+  const [passText, setPassText] = useState('');
+  const [failText, setFailText] = useState('');
   
   const passFileInputRef = useRef<HTMLInputElement>(null);
   const failFileInputRef = useRef<HTMLInputElement>(null);
@@ -104,6 +109,34 @@ export function LogicCard({ step, onUpdate, isSaving }: LogicCardProps) {
     e.target.value = '';
   }, [uploadFile, createExample, step.id]);
 
+  const handleAddTextExample = useCallback(async (label: 'PASS' | 'FAIL') => {
+    const content = label === 'PASS' ? passText : failText;
+    const trimmed = content.trim();
+    if (!trimmed) return;
+
+    try {
+      await createExample.mutateAsync({
+        stepId: step.id,
+        data: {
+          content: trimmed,
+          content_type: 'text',
+          label: label === 'PASS' ? ExampleCreate.label.PASS : ExampleCreate.label.FAIL,
+          description: '文字例子',
+        },
+      });
+
+      if (label === 'PASS') {
+        setPassText('');
+        setIsAddingPassText(false);
+      } else {
+        setFailText('');
+        setIsAddingFailText(false);
+      }
+    } catch (error) {
+      console.error('添加文字例子失败:', error);
+    }
+  }, [createExample, failText, passText, step.id]);
+
   /**
    * 删除样本
    */
@@ -162,7 +195,10 @@ export function LogicCard({ step, onUpdate, isSaving }: LogicCardProps) {
     <div className="space-y-6">
       {/* 策略切换 */}
       <div className="space-y-3">
-        <Label className="text-base font-medium">选择判断策略</Label>
+        <Label className="text-base font-medium">你是怎么判断的？</Label>
+        <p className="text-xs text-slate-500">
+          标准说得清就“写标准”；说不清就“给例子”（推荐）。
+        </p>
         <div className="grid grid-cols-2 gap-3">
           <button
             type="button"
@@ -174,10 +210,8 @@ export function LogicCard({ step, onUpdate, isSaving }: LogicCardProps) {
             }`}
           >
             <span className="text-2xl mb-2 block">📏</span>
-            <span className="font-medium text-sm block">硬规则 (Hard Rules)</span>
-            <span className="text-xs text-slate-500">
-              使用明确的条件表达式
-            </span>
+            <span className="font-medium text-sm block">写标准（说得清）</span>
+            <span className="text-xs text-slate-500">像写巡检标准一样写清楚合格条件</span>
           </button>
           <button
             type="button"
@@ -189,10 +223,8 @@ export function LogicCard({ step, onUpdate, isSaving }: LogicCardProps) {
             }`}
           >
             <span className="text-2xl mb-2 block">🧠</span>
-            <span className="font-medium text-sm block">经验学习 (Few-Shot)</span>
-            <span className="text-xs text-slate-500">
-              通过正反例让 AI 学习判断
-            </span>
+            <span className="font-medium text-sm block">给例子（说不清）</span>
+            <span className="text-xs text-slate-500">拍几张合格/不合格，或写几句例子</span>
           </button>
         </div>
       </div>
@@ -201,20 +233,20 @@ export function LogicCard({ step, onUpdate, isSaving }: LogicCardProps) {
       {strategy === 'rule_based' && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-base">📏 规则表达式</CardTitle>
+            <CardTitle className="text-base">📏 合格标准（写清楚）</CardTitle>
             <CardDescription>
-              输入判断条件，例如：金额 &gt; 5000 或 状态 == "已审批"
+              把“合格的标准”写清楚，像交代徒弟检查要点一样。
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Textarea
               value={ruleExpression}
               onChange={(e) => handleRuleChange(e.target.value)}
-              placeholder="输入判断规则表达式..."
+              placeholder="例如：\n- 合格：无渗漏、无异响、温度 < 80℃、压力 0.4~0.6MPa\n- 不合格：任意一项不满足\n\n（如果你会写表达式也可以：温度 < 80 AND 无渗漏 AND 压力>=0.4 AND 压力<=0.6）"
               className="min-h-[100px] font-mono text-sm"
             />
             <p className="text-xs text-slate-500 mt-2">
-              支持比较运算符：==, !=, &gt;, &lt;, &gt;=, &lt;=, AND, OR
+              不会写表达式也没关系，写成“巡检标准/口头标准”也可以；写不清建议选“给例子”。
             </p>
           </CardContent>
         </Card>
@@ -223,6 +255,11 @@ export function LogicCard({ step, onUpdate, isSaving }: LogicCardProps) {
       {/* Few-Shot 模式 */}
       {strategy === 'few_shot' && (
         <>
+          <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+            完成本步需要：至少 <span className="font-medium text-emerald-700">1 个合格</span> +
+            <span className="font-medium text-rose-700"> 1 个不合格</span> 的例子（图片或文字都行）。
+          </div>
+
           {/* 隐藏的文件输入 */}
           <input
             ref={passFileInputRef}
@@ -245,10 +282,10 @@ export function LogicCard({ step, onUpdate, isSaving }: LogicCardProps) {
             <Card className="border-emerald-200 bg-emerald-50/30">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base text-emerald-700 flex items-center gap-2">
-                  ✅ 通过样本 (PASS)
+                  ✅ 合格/正常（例子）
                 </CardTitle>
                 <CardDescription className="text-emerald-600">
-                  上传符合标准的正例
+                  拍照或写一句话：什么样算合格
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -261,8 +298,51 @@ export function LogicCard({ step, onUpdate, isSaving }: LogicCardProps) {
                   onClick={() => passFileInputRef.current?.click()}
                   disabled={uploadFile.isPending || createExample.isPending}
                 >
-                  {uploadFile.isPending ? '上传中...' : '+ 添加通过样本'}
+                  {uploadFile.isPending ? '上传中...' : '+ 上传合格照片/截图'}
                 </Button>
+
+                {isAddingPassText ? (
+                  <div className="space-y-2">
+                    <Textarea
+                      value={passText}
+                      onChange={(e) => setPassText(e.target.value)}
+                      placeholder="例如：压力 0.4~0.6MPa、无渗漏、无异响、温度正常。"
+                      className="min-h-[80px]"
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => handleAddTextExample('PASS')}
+                        disabled={!passText.trim() || createExample.isPending}
+                      >
+                        确认添加
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setIsAddingPassText(false);
+                          setPassText('');
+                        }}
+                      >
+                        取消
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full border-emerald-300 text-emerald-700 hover:bg-emerald-100"
+                    onClick={() => setIsAddingPassText(true)}
+                    disabled={createExample.isPending}
+                  >
+                    + 添加合格文字
+                  </Button>
+                )}
               </CardContent>
             </Card>
 
@@ -270,10 +350,10 @@ export function LogicCard({ step, onUpdate, isSaving }: LogicCardProps) {
             <Card className="border-rose-200 bg-rose-50/30">
               <CardHeader className="pb-3">
                 <CardTitle className="text-base text-rose-700 flex items-center gap-2">
-                  ❌ 失败样本 (FAIL)
+                  ❌ 不合格/异常（例子）
                 </CardTitle>
                 <CardDescription className="text-rose-600">
-                  上传不符合标准的反例
+                  拍照或写一句话：什么样算不合格
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -286,8 +366,51 @@ export function LogicCard({ step, onUpdate, isSaving }: LogicCardProps) {
                   onClick={() => failFileInputRef.current?.click()}
                   disabled={uploadFile.isPending || createExample.isPending}
                 >
-                  {uploadFile.isPending ? '上传中...' : '+ 添加失败样本'}
+                  {uploadFile.isPending ? '上传中...' : '+ 上传不合格照片/截图'}
                 </Button>
+
+                {isAddingFailText ? (
+                  <div className="space-y-2">
+                    <Textarea
+                      value={failText}
+                      onChange={(e) => setFailText(e.target.value)}
+                      placeholder="例如：接口渗漏/有油迹、压力低于 0.4MPa、明显异响、温度过高。"
+                      className="min-h-[80px]"
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => handleAddTextExample('FAIL')}
+                        disabled={!failText.trim() || createExample.isPending}
+                      >
+                        确认添加
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setIsAddingFailText(false);
+                          setFailText('');
+                        }}
+                      >
+                        取消
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full border-rose-300 text-rose-700 hover:bg-rose-100"
+                    onClick={() => setIsAddingFailText(true)}
+                    disabled={createExample.isPending}
+                  >
+                    + 添加不合格文字
+                  </Button>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -295,16 +418,16 @@ export function LogicCard({ step, onUpdate, isSaving }: LogicCardProps) {
           {/* 评估提示词 */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">💡 评估提示词（可选）</CardTitle>
+              <CardTitle className="text-base">💡 补充说明（可选）</CardTitle>
               <CardDescription>
-                帮助 AI 理解如何判断样本的额外说明
+                有特别注意点可以写一句话（例如“只看压力表，不用管外观”）
               </CardDescription>
             </CardHeader>
             <CardContent>
               <Textarea
                 value={evaluationPrompt}
                 onChange={(e) => handlePromptChange(e.target.value)}
-                placeholder="例如：请关注图片中的签名是否完整、日期格式是否正确..."
+                placeholder="例如：优先判断是否渗漏；只要发现渗漏就判不合格。"
                 className="min-h-[80px]"
               />
             </CardContent>
@@ -315,20 +438,18 @@ export function LogicCard({ step, onUpdate, isSaving }: LogicCardProps) {
       {/* 配置预览 */}
       <Card className="bg-slate-50">
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm text-slate-600">判断逻辑配置预览</CardTitle>
+          <CardTitle className="text-sm text-slate-600">本步预览</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="text-sm space-y-1">
             <p className="text-slate-500">
               策略：<span className="font-medium text-indigo-600">
-                {strategy === 'rule_based' ? '硬规则' : '经验学习 (Few-Shot)'}
+                {strategy === 'rule_based' ? '写标准' : '给例子'}
               </span>
             </p>
             {strategy === 'rule_based' ? (
               <p className="text-slate-500">
-                规则：<span className="font-mono text-slate-700">
-                  {ruleExpression || '未配置'}
-                </span>
+                标准：<span className="font-mono text-slate-700">{ruleExpression ? '已填写' : '未填写'}</span>
               </p>
             ) : (
               <p className="text-slate-500">

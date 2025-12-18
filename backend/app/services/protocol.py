@@ -24,40 +24,40 @@ from app.schemas.protocol import (
 # Logic Strategy Mapping
 # ============================================================================
 
-# 内部存储�?-> 输出协议�?
+# 内部存储 -> 输出协议
 LOGIC_STRATEGY_MAPPING: dict[str, str] = {
     "rule_based": "RULE_BASED",
-    "few_shot": "SEMANTIC_SIMILARITY",  # 关键映射�?
+    "few_shot": "SEMANTIC_SIMILARITY",  # 关键映射
 }
 
-# 输出协议�?-> 内部存储�?(反向映射)
+# 输出协议 -> 内部存储 (反向映射)
 LOGIC_STRATEGY_REVERSE_MAPPING: dict[str, str] = {
     v: k for k, v in LOGIC_STRATEGY_MAPPING.items()
 }
 
 
 def map_logic_strategy_to_protocol(internal_value: Optional[str]) -> str:
-    """将内部存储的 logic_strategy 转换为协议输出格式�?
+    """将内部存储的 logic_strategy 转换为协议输出格式。
     
     Args:
-        internal_value: 内部存储的策略�?(rule_based �?few_shot)
+        internal_value: 内部存储的策略 (rule_based / few_shot)
         
     Returns:
-        协议格式的策略�?(RULE_BASED �?SEMANTIC_SIMILARITY)
+        协议格式的策略 (RULE_BASED / SEMANTIC_SIMILARITY)
     """
     if internal_value is None:
-        return "RULE_BASED"  # 默认�?
+        return "RULE_BASED"  # 默认
     return LOGIC_STRATEGY_MAPPING.get(internal_value, internal_value.upper())
 
 
 def map_logic_strategy_from_protocol(protocol_value: str) -> str:
-    """将协议格式的 logic_strategy 转换为内部存储格式�?
+    """将协议格式的 logic_strategy 转换为内部存储格式。
     
     Args:
-        protocol_value: 协议格式的策略�?(RULE_BASED �?SEMANTIC_SIMILARITY)
+        protocol_value: 协议格式的策略 (RULE_BASED / SEMANTIC_SIMILARITY)
         
     Returns:
-        内部存储的策略�?(rule_based �?few_shot)
+        内部存储的策略 (rule_based / few_shot)
     """
     return LOGIC_STRATEGY_REVERSE_MAPPING.get(protocol_value, protocol_value.lower())
 
@@ -153,9 +153,9 @@ class ProtocolService:
         Returns:
             Business domain string (defaults to workflow name or 'general')
         """
-        # �?context_description �?workflow name 推断业务领域
+        # 根据 context_description / workflow name 推断业务领域
         if step.context_description:
-            return step.context_description[:100]  # 截取�?00字符
+            return step.context_description[:100]  # 截取 100 字符
         if step.workflow and step.workflow.name:
             return step.workflow.name
         return "general"
@@ -169,7 +169,7 @@ class ProtocolService:
         Returns:
             ProtocolInputSpec schema object
         """
-        # 确定数据源类�?
+        # 确定数据源类型
         data_source = step.context_type or "unknown"
         
         # 确定目标区域
@@ -177,14 +177,14 @@ class ProtocolService:
         if step.context_image_url:
             target_section = step.context_image_url
         elif step.context_text_content:
-            target_section = step.context_text_content[:200]  # 截取�?00字符
+            target_section = step.context_text_content[:200]  # 截取 200 字符
         elif step.context_voice_transcript:
             target_section = step.context_voice_transcript[:200]
         
-        # 上下文描�?
+        # 上下文描述
         context_description = step.context_description or ""
         
-        # 添加提取关键词信�?
+        # 添加提取关键词信息
         if step.extraction_keywords:
             keywords_str = ", ".join(step.extraction_keywords)
             context_description = f"{context_description} [Keywords: {keywords_str}]".strip()
@@ -246,7 +246,7 @@ class ProtocolService:
         Returns:
             ProtocolRoutingMap schema object
         """
-        # 默认下一�?
+        # 默认下一步
         default_next = step.routing_default_next or "next"
         
         # 构建分支列表
@@ -286,7 +286,7 @@ class ProtocolService:
         Returns:
             ProtocolOutputSchema schema object
         """
-        # 根据提取关键词生成输出字�?
+        # 根据提取关键词生成输出字段
         fields: list[ProtocolOutputField] = []
         
         if step.extraction_keywords:
@@ -296,7 +296,7 @@ class ProtocolService:
                     type="string",
                 ))
         
-        # 添加默认的判断结果字�?
+        # 添加默认的判断结果字段
         fields.append(ProtocolOutputField(
             name="judgment_result",
             type="string",

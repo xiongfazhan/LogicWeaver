@@ -7,7 +7,7 @@ import { useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Sidebar, WizardCanvas } from '../components/builder';
 import { useWorkflow } from '../hooks/useWorkflows';
-import { useSteps, useCreateStep } from '../hooks/useSteps';
+import { useSteps, useCreateStep, useUpdateStep } from '../hooks/useSteps';
 import { useBuilderStore, MICRO_STEP_ORDER } from '../stores/builderStore';
 import { Loader2 } from 'lucide-react';
 
@@ -30,6 +30,7 @@ export default function Builder() {
   const { data: workflow, isLoading: isLoadingWorkflow } = useWorkflow(id || null);
   const { data: steps = [], isLoading: isLoadingSteps } = useSteps(id || null);
   const createStepMutation = useCreateStep();
+  const updateStepMutation = useUpdateStep();
 
   // 初始化 store
   useEffect(() => {
@@ -72,6 +73,15 @@ export default function Builder() {
     const advanced = nextMicroStep();
     
     if (!advanced) {
+      // 已经完成当前 step 的最后一个 micro-step（Routing），标记该 step 为 completed
+      if (id && currentStep?.id) {
+        updateStepMutation.mutate({
+          workflowId: id,
+          stepId: currentStep.id,
+          data: { status: 'completed' },
+        });
+      }
+
       // 已经是最后一个 micro-step，前进到下一个 step
       if (currentStepIndex < steps.length - 1) {
         goToStep(currentStepIndex + 1, 'context');
@@ -80,7 +90,7 @@ export default function Builder() {
         navigate(`/workflow/${id}/review`);
       }
     }
-  }, [nextMicroStep, currentStepIndex, steps.length, goToStep, navigate, id]);
+  }, [nextMicroStep, id, currentStep?.id, currentStepIndex, steps.length, goToStep, navigate, updateStepMutation]);
 
   /**
    * 上一步导航
@@ -101,14 +111,14 @@ export default function Builder() {
 
   if (isLoading && !workflow) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="h-screen bg-slate-50 flex items-center justify-center">
         <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
+    <div className="h-screen bg-slate-50 flex">
       {/* Left Sidebar - 步骤导航 */}
       <Sidebar
         workflowName={workflow?.name || ''}

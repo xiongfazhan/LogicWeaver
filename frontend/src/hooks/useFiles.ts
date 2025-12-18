@@ -30,7 +30,7 @@ export function useUploadFile() {
 export function useDeleteFile() {
   return useMutation<FileDeleteResponse, ApiError, string>({
     mutationFn: async (fileUrl) => {
-      return await FilesService.deleteFileApiFilesDeleteDelete({ file_url: fileUrl });
+      return await FilesService.deleteFileApiFilesDeleteDelete({ url: fileUrl });
     },
   });
 }
