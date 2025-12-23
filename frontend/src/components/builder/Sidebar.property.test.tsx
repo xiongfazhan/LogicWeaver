@@ -3,15 +3,16 @@
  * **Feature: universal-sop-architect, Property 11: Step Navigation Consistency**
  * **验证需求: 6.2**
  * 
- * 验证：对于任意步骤点击侧边栏后，Builder Workspace 应正确导航到该步骤并显示其当前 micro-step 状态
+ * 验证：对于任意步骤点击侧边栏后，Builder Workspace 应正确导航到该步骤
  */
 
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { render, cleanup, fireEvent } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as fc from 'fast-check';
 import { Sidebar } from './Sidebar';
-import { useBuilderStore, type MicroStep } from '../../stores/builderStore';
+import { useBuilderStore } from '../../stores/builderStore';
 import { WorkflowStepResponse } from '../../api/generated/models/WorkflowStepResponse';
 
 // 每次测试后清理 DOM 和 store
@@ -77,17 +78,27 @@ function renderSidebar(steps: WorkflowStepResponse[]) {
   cleanup();
   
   const mockOnAddStep = () => {};
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+      },
+    },
+  });
   
   return render(
-    <BrowserRouter>
-      <Sidebar
-        workflowName="测试工作流"
-        steps={steps}
-        isLoading={false}
-        onAddStep={mockOnAddStep}
-        isAddingStep={false}
-      />
-    </BrowserRouter>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <Sidebar
+          workflowId={steps[0]?.workflow_id || 'test-workflow-id'}
+          workflowName="测试工作流"
+          steps={steps}
+          isLoading={false}
+          onAddStep={mockOnAddStep}
+          isAddingStep={false}
+        />
+      </BrowserRouter>
+    </QueryClientProvider>
   );
 }
 
@@ -114,7 +125,7 @@ describe('Sidebar Step Navigation Property Tests', () => {
           const { container } = renderSidebar(steps);
           
           // 获取所有步骤按钮
-          const stepButtons = container.querySelectorAll('nav ul li button');
+          const stepButtons = container.querySelectorAll('button[data-testid^="sidebar-step-"]');
           expect(stepButtons.length).toBe(steps.length);
           
           // 点击目标步骤
@@ -123,46 +134,6 @@ describe('Sidebar Step Navigation Property Tests', () => {
           // 验证 store 中的 currentStepIndex 已更新
           const { currentStepIndex } = useBuilderStore.getState();
           expect(currentStepIndex).toBe(targetIndex);
-        }
-      ),
-      FC_CONFIG
-    );
-  });
-
-  /**
-   * **Feature: universal-sop-architect, Property 11: Step Navigation Consistency**
-   * **Validates: Requirements 6.2**
-   * 
-   * 验证：点击步骤后，currentMicroStep 应重置为 'context'
-   */
-  it('should reset currentMicroStep to context when navigating to any step', () => {
-    const microSteps: MicroStep[] = ['context', 'extraction', 'logic', 'routing'];
-    
-    fc.assert(
-      fc.property(
-        stepsArrayArb,
-        fc.integer({ min: 0, max: 9 }),
-        fc.constantFrom(...microSteps),
-        (steps, targetIndexRaw, initialMicroStep) => {
-          // 确保目标索引在有效范围内
-          const targetIndex = targetIndexRaw % steps.length;
-          
-          // 重置 store 并设置初始 micro-step
-          useBuilderStore.getState().reset();
-          useBuilderStore.getState().setMicroStep(initialMicroStep);
-          
-          // 渲染 Sidebar
-          const { container } = renderSidebar(steps);
-          
-          // 获取所有步骤按钮
-          const stepButtons = container.querySelectorAll('nav ul li button');
-          
-          // 点击目标步骤
-          fireEvent.click(stepButtons[targetIndex]);
-          
-          // 验证 currentMicroStep 已重置为 'context'
-          const { currentMicroStep } = useBuilderStore.getState();
-          expect(currentMicroStep).toBe('context');
         }
       ),
       FC_CONFIG
@@ -186,21 +157,20 @@ describe('Sidebar Step Navigation Property Tests', () => {
           
           // 重置 store 并设置初始步骤
           useBuilderStore.getState().reset();
-          useBuilderStore.getState().goToStep(initialIndex, 'context');
+          useBuilderStore.getState().setCurrentStep(initialIndex);
           
           // 渲染 Sidebar
           const { container } = renderSidebar(steps);
           
           // 获取所有步骤按钮
-          const stepButtons = container.querySelectorAll('nav ul li button');
+          const stepButtons = container.querySelectorAll('button[data-testid^="sidebar-step-"]');
           
           // 点击当前已激活的步骤
           fireEvent.click(stepButtons[initialIndex]);
           
           // 验证状态保持不变
-          const { currentStepIndex, currentMicroStep } = useBuilderStore.getState();
+          const { currentStepIndex } = useBuilderStore.getState();
           expect(currentStepIndex).toBe(initialIndex);
-          expect(currentMicroStep).toBe('context');
         }
       ),
       FC_CONFIG
@@ -230,7 +200,7 @@ describe('Sidebar Step Navigation Property Tests', () => {
           const { container } = renderSidebar(steps);
           
           // 获取所有步骤按钮
-          const stepButtons = container.querySelectorAll('nav ul li button');
+          const stepButtons = container.querySelectorAll('button[data-testid^="sidebar-step-"]');
           
           // 执行点击序列
           for (const index of clickSequence) {
@@ -238,9 +208,8 @@ describe('Sidebar Step Navigation Property Tests', () => {
           }
           
           // 验证最终状态反映最后点击的步骤
-          const { currentStepIndex, currentMicroStep } = useBuilderStore.getState();
+          const { currentStepIndex } = useBuilderStore.getState();
           expect(currentStepIndex).toBe(lastClickedIndex);
-          expect(currentMicroStep).toBe('context');
         }
       ),
       FC_CONFIG
@@ -269,7 +238,7 @@ describe('Sidebar Step Navigation Property Tests', () => {
           const { container } = renderSidebar(steps);
           
           // 获取所有步骤按钮
-          const stepButtons = container.querySelectorAll('nav ul li button');
+          const stepButtons = container.querySelectorAll('button[data-testid^="sidebar-step-"]');
           
           // 点击目标步骤
           fireEvent.click(stepButtons[targetIndex]);
@@ -277,7 +246,7 @@ describe('Sidebar Step Navigation Property Tests', () => {
           // 重新渲染以反映状态变化
           cleanup();
           const { container: newContainer } = renderSidebar(steps);
-          const newStepButtons = newContainer.querySelectorAll('nav ul li button');
+          const newStepButtons = newContainer.querySelectorAll('button[data-testid^="sidebar-step-"]');
           
           // 验证被点击的步骤具有激活样式 (bg-indigo-50)
           const activeButton = newStepButtons[targetIndex];

@@ -4,3 +4,4 @@
 export { WorkflowCard } from './WorkflowCard';
 export { CreateWorkflowCard } from './CreateWorkflowCard';
 export { CreateWorkflowModal } from './CreateWorkflowModal';
+export { TemplateSelectModal } from './TemplateSelectModal';

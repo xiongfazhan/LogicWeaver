@@ -5,11 +5,11 @@
  */
 import { useState } from 'react';
 import { useWorkflows } from '@/hooks/useWorkflows';
-import { WorkflowCard, CreateWorkflowCard, CreateWorkflowModal } from '@/components/dashboard';
+import { WorkflowCard, CreateWorkflowCard, TemplateSelectModal } from '@/components/dashboard';
 import { Loader2 } from 'lucide-react';
 
 export default function Dashboard() {
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
   const { data, isLoading, error } = useWorkflows();
 
   return (
@@ -17,7 +17,7 @@ export default function Dashboard() {
       {/* Header - 包含标题和用户头像 */}
       <header className="bg-white border-b border-slate-200 px-6 py-4">
         <div className="flex items-center justify-between max-w-7xl mx-auto">
-          <h1 className="text-2xl font-bold text-slate-900">My SOP Workflows</h1>
+          <h1 className="text-2xl font-bold text-slate-900">📋 我的工作流</h1>
           <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-medium">
             U
           </div>
@@ -42,7 +42,7 @@ export default function Dashboard() {
           /* 工作流卡片 Grid 布局 */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* 创建新工作流卡片 */}
-            <CreateWorkflowCard onClick={() => setIsCreateModalOpen(true)} />
+            <CreateWorkflowCard onClick={() => setIsTemplateModalOpen(true)} />
 
             {/* 工作流卡片列表 */}
             {data?.items.map((workflow) => (
@@ -59,11 +59,12 @@ export default function Dashboard() {
         )}
       </main>
 
-      {/* 创建工作流模态框 */}
-      <CreateWorkflowModal
-        open={isCreateModalOpen}
-        onOpenChange={setIsCreateModalOpen}
+      {/* 模板选择模态框 */}
+      <TemplateSelectModal
+        open={isTemplateModalOpen}
+        onOpenChange={setIsTemplateModalOpen}
       />
     </div>
   );
 }
+

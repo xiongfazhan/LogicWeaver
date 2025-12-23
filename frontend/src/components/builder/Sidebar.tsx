@@ -13,10 +13,13 @@ import {
   Loader2
 } from 'lucide-react';
 import { Button } from '../ui/button';
-import { useBuilderStore, type MicroStep } from '../../stores/builderStore';
+import { Trash2 } from 'lucide-react';
+import { useDeleteStep } from '../../hooks/useSteps';
+import { useBuilderStore } from '../../stores/builderStore';
 import type { WorkflowStepResponse } from '../../api/generated/models/WorkflowStepResponse';
 
 interface SidebarProps {
+  workflowId: string;
   workflowName: string;
   steps: WorkflowStepResponse[];
   isLoading?: boolean;
@@ -44,6 +47,7 @@ function getStepIcon(
 }
 
 export function Sidebar({ 
+  workflowId,
   workflowName, 
   steps, 
   isLoading,
@@ -51,17 +55,42 @@ export function Sidebar({
   isAddingStep 
 }: SidebarProps) {
   const navigate = useNavigate();
+  const deleteStepMutation = useDeleteStep();
   const { 
     currentStepIndex, 
-    goToStep,
+    setCurrentStep,
   } = useBuilderStore();
 
   const handleStepClick = (index: number) => {
-    goToStep(index, 'context' as MicroStep);
+    setCurrentStep(index);
   };
 
   const handleBack = () => {
     navigate('/');
+  };
+
+  const handleDeleteStep = async (stepId: string, stepIndex: number) => {
+    if (!workflowId) return;
+    const confirmed = window.confirm('确定删除该步骤吗？删除后不可恢复。');
+    if (!confirmed) return;
+
+    const newLength = steps.length - 1;
+    let nextIndex = currentStepIndex;
+
+    if (stepIndex < currentStepIndex) {
+      nextIndex = Math.max(0, currentStepIndex - 1);
+    } else if (stepIndex === currentStepIndex) {
+      if (currentStepIndex >= newLength) {
+        nextIndex = Math.max(0, newLength - 1);
+      }
+    }
+
+    try {
+      await deleteStepMutation.mutateAsync({ workflowId, stepId });
+      setCurrentStep(newLength <= 0 ? 0 : nextIndex);
+    } catch (error) {
+      console.error('删除步骤失败:', error);
+    }
   };
 
   return (
@@ -96,23 +125,43 @@ export function Sidebar({
               const isActive = index === currentStepIndex;
               return (
                 <li key={step.id}>
-                  <button
-                    onClick={() => handleStepClick(index)}
-                    className={`
-                      w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left
-                      transition-colors
-                      ${isActive 
-                        ? 'bg-indigo-50 text-indigo-700 font-medium' 
-                        : 'text-slate-600 hover:bg-slate-50'
-                      }
-                      ${step.status === 'completed' && !isActive ? 'text-slate-500' : ''}
-                    `}
-                  >
-                    {getStepIcon(step.status, isActive)}
-                    <span className="truncate flex-1">
-                      {step.name || `步骤 ${index + 1}`}
-                    </span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      data-testid={`sidebar-step-${index}`}
+                      onClick={() => handleStepClick(index)}
+                      className={`
+                        flex-1 w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left
+                        transition-colors
+                        ${isActive 
+                          ? 'bg-indigo-50 text-indigo-700 font-medium' 
+                          : 'text-slate-600 hover:bg-slate-50'
+                        }
+                        ${step.status === 'completed' && !isActive ? 'text-slate-500' : ''}
+                      `}
+                    >
+                      {getStepIcon(step.status, isActive)}
+                      <span className="truncate flex-1">
+                        {step.name || `步骤 ${index + 1}`}
+                      </span>
+                    </button>
+
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-slate-500 hover:text-rose-600"
+                      aria-label={`删除步骤 ${index + 1}`}
+                      onClick={() => handleDeleteStep(step.id, index)}
+                      disabled={deleteStepMutation.isPending}
+                    >
+                      {deleteStepMutation.isPending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
                 </li>
               );
             })}

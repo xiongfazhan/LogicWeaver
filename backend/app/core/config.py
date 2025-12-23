@@ -29,6 +29,13 @@ class Settings(BaseSettings):
     upload_dir: str = "uploads"
     max_upload_size: int = 10 * 1024 * 1024  # 10MB
 
+    # LLM Configuration (OpenAI-compatible API)
+    llm_enabled: bool = True
+    llm_provider: str = "chatglm"  # chatglm, openai, or custom name
+    llm_api_base: str = "http://localhost:8080/v1"
+    llm_api_key: str = ""
+    llm_model: str = "glm-4-flash"
+
 
 @lru_cache
 def get_settings() -> Settings:

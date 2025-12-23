@@ -28,7 +28,9 @@ export function WorkflowCard({ workflow }: WorkflowCardProps) {
   const navigate = useNavigate();
 
   const handleClick = () => {
-    navigate(`/workflow/${workflow.id}/builder`);
+    // 暂时默认进入工人采集页面
+    // TODO: 根据状态跳转到不同页面（需要先同步前端类型定义）
+    navigate(`/workflow/${workflow.id}/worker`);
   };
 
   return (

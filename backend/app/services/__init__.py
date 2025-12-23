@@ -24,6 +24,17 @@ from app.services.step import (
     WorkflowNotFoundError as StepWorkflowNotFoundError,
 )
 from app.services.workflow import WorkflowNotFoundError, WorkflowService
+from app.services.llm import LLMService, LLMServiceError, LLMConnectionError, LLMResponseError, get_llm_service
+from app.services.ai_analysis import (
+    AIAnalysisService,
+    AnalysisError,
+    AnalysisResult,
+    AnalysisResponse,
+    InsufficientExamplesError,
+    StepNotFoundError as AnalysisStepNotFoundError,
+)
+from app.services import task as task_service
+from app.services import note as note_service
 
 __all__ = [
     "WorkflowService",
@@ -43,4 +54,17 @@ __all__ = [
     "FileUploadError",
     "FileSizeExceededError",
     "InvalidFileTypeError",
+    "LLMService",
+    "LLMServiceError",
+    "LLMConnectionError",
+    "LLMResponseError",
+    "get_llm_service",
+    "AIAnalysisService",
+    "AnalysisError",
+    "AnalysisResult",
+    "AnalysisResponse",
+    "InsufficientExamplesError",
+    "AnalysisStepNotFoundError",
+    "task_service",
+    "note_service",
 ]

@@ -37,3 +37,13 @@ export { useProtocol } from './useProtocol';
 
 // File hooks
 export { useUploadFile, useDeleteFile } from './useFiles';
+
+// Analysis hooks
+export {
+  useAnalyzeStep,
+  useAnalyzeAllSteps,
+  getLLMStatus,
+  type AnalysisResponse,
+  type AnalysisResult,
+  type LLMStatus,
+} from './useAnalysis';

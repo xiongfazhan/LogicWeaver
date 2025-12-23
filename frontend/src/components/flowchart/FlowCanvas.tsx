@@ -33,9 +33,20 @@ const edgeTypes: EdgeTypes = {
   branchEdge: BranchEdge,
 };
 
+/** 数据契约类型 */
+interface StepContract {
+  step_id: number;
+  step_name: string;
+  business_intent: string;
+  inputs: { name: string; type: string; description: string }[];
+  outputs: { name: string; type: string; description: string }[];
+}
+
 interface FlowCanvasProps {
   /** 工作流数据 */
   workflow: WorkflowResponse;
+  /** 数据契约（AI 分析结果） */
+  contracts?: StepContract[];
   /** 画布类名 */
   className?: string;
 }
@@ -44,12 +55,12 @@ interface FlowCanvasProps {
  * FlowCanvas - ReactFlow 画布组件
  * 将工作流渲染为可视化流程图
  */
-export function FlowCanvas({ workflow, className }: FlowCanvasProps) {
+export function FlowCanvas({ workflow, contracts, className }: FlowCanvasProps) {
   // 将工作流转换为节点和边
   const { initialNodes, initialEdges } = useMemo(() => {
-    const { nodes, edges } = workflowToFlowchart(workflow);
+    const { nodes, edges } = workflowToFlowchart(workflow, contracts);
     return { initialNodes: nodes, initialEdges: edges };
-  }, [workflow]);
+  }, [workflow, contracts]);
 
   const [nodes, , onNodesChange] = useNodesState(initialNodes);
   const [edges, , onEdgesChange] = useEdgesState(initialEdges);
@@ -81,17 +92,17 @@ export function FlowCanvas({ workflow, className }: FlowCanvasProps) {
         }}
         proOptions={{ hideAttribution: true }}
       >
-        <Background 
-          variant={BackgroundVariant.Dots} 
-          gap={20} 
+        <Background
+          variant={BackgroundVariant.Dots}
+          gap={20}
           size={1}
           color="#e2e8f0"
         />
-        <Controls 
+        <Controls
           showInteractive={false}
           className="!bg-white !border-slate-200 !shadow-lg"
         />
-        <MiniMap 
+        <MiniMap
           nodeColor={nodeColor}
           maskColor="rgba(241, 245, 249, 0.8)"
           className="!bg-white !border-slate-200 !shadow-lg"

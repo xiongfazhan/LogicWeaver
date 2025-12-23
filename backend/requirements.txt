@@ -23,3 +23,6 @@ hypothesis>=6.92.0
 
 # Development
 ruff>=0.1.0
+
+# LLM Integration (OpenAI-compatible API)
+openai>=1.12.0

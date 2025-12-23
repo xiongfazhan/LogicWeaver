@@ -4,6 +4,12 @@
  */
 import type { Node, Edge } from '@xyflow/react';
 
+/** 数据字段 */
+export interface DataFieldInfo {
+  name: string;
+  type: string;
+}
+
 /** 步骤节点数据 */
 export interface StepNodeData extends Record<string, unknown> {
   /** 步骤标题 */
@@ -16,6 +22,12 @@ export interface StepNodeData extends Record<string, unknown> {
   order: number;
   /** 是否为结束节点 */
   isEndNode?: boolean;
+  /** 业务意图 */
+  businessIntent?: string;
+  /** 输入字段 */
+  inputs?: DataFieldInfo[];
+  /** 输出字段 */
+  outputs?: DataFieldInfo[];
 }
 
 /** 边数据 */

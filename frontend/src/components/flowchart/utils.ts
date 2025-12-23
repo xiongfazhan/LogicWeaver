@@ -3,13 +3,22 @@
  * 需求: 9.4 - 将工作流步骤和路由转换为 ReactFlow 节点/边
  */
 import type { WorkflowResponse, WorkflowStepResponse } from '../../types';
-import type { FlowchartNode, FlowchartEdge, StepNodeData, BranchEdgeData } from './types';
+import type { FlowchartNode, FlowchartEdge, StepNodeData, BranchEdgeData, DataFieldInfo } from './types';
+
+/** 数据契约类型（从 localStorage 读取） */
+interface StepContract {
+  step_id: number;
+  step_name: string;
+  business_intent: string;
+  inputs: { name: string; type: string; description: string }[];
+  outputs: { name: string; type: string; description: string }[];
+}
 
 /** 节点间垂直间距 */
-const VERTICAL_SPACING = 180;
+const VERTICAL_SPACING = 200;
 
 /** 节点间水平间距（用于分支） */
-const HORIZONTAL_SPACING = 280;
+const HORIZONTAL_SPACING = 320;
 
 /** 起始 X 坐标 */
 const START_X = 400;
@@ -21,13 +30,16 @@ const START_Y = 50;
  * 将 WorkflowResponse 转换为 ReactFlow 节点和边
  * 需求: 9.4
  */
-export function workflowToFlowchart(workflow: WorkflowResponse): {
+export function workflowToFlowchart(
+  workflow: WorkflowResponse,
+  contracts?: StepContract[]
+): {
   nodes: FlowchartNode[];
   edges: FlowchartEdge[];
 } {
   const nodes: FlowchartNode[] = [];
   const edges: FlowchartEdge[] = [];
-  
+
   // 按 step_order 排序步骤
   const sortedSteps = [...(workflow.steps || [])].sort(
     (a, b) => a.step_order - b.step_order
@@ -39,14 +51,31 @@ export function workflowToFlowchart(workflow: WorkflowResponse): {
 
   // 用于跟踪已创建的结束节点
   const endNodeIds = new Set<string>();
-  
+
   // 创建步骤节点
   sortedSteps.forEach((step, index) => {
+    // 查找对应的数据契约
+    const contract = contracts?.[index];
+
+    // 转换输入输出格式
+    const inputs: DataFieldInfo[] = contract?.inputs?.map(f => ({
+      name: f.name,
+      type: f.type,
+    })) || [];
+
+    const outputs: DataFieldInfo[] = contract?.outputs?.map(f => ({
+      name: f.name,
+      type: f.type,
+    })) || [];
+
     const nodeData: StepNodeData = {
       title: step.name,
       thumbnailUrl: step.context_image_url,
       status: step.status || 'pending',
       order: step.step_order,
+      businessIntent: contract?.business_intent,
+      inputs,
+      outputs,
     };
 
     const node: FlowchartNode = {
@@ -61,7 +90,7 @@ export function workflowToFlowchart(workflow: WorkflowResponse): {
     // 创建边
     const nextStepIndex = index + 1;
     const hasNextStep = nextStepIndex < sortedSteps.length;
-    
+
     // 默认路由边（成功路径）
     if (hasNextStep) {
       const defaultNext = step.routing_default_next;
@@ -89,17 +118,17 @@ export function workflowToFlowchart(workflow: WorkflowResponse): {
     if (step.routing_branches && step.routing_branches.length > 0) {
       step.routing_branches.forEach((branch, branchIndex) => {
         const isFailBranch = branch.condition_result.toLowerCase().includes('fail') ||
-                            branch.action_type.toLowerCase().includes('reject') ||
-                            branch.action_type.toLowerCase().includes('end');
+          branch.action_type.toLowerCase().includes('reject') ||
+          branch.action_type.toLowerCase().includes('end');
 
         // 如果目标是 end_process，创建结束节点
-        if (branch.next_step_id === 'end_process' || 
-            branch.action_type.toLowerCase().includes('end')) {
+        if (branch.next_step_id === 'end_process' ||
+          branch.action_type.toLowerCase().includes('end')) {
           const endNodeId = `end-${step.id}-${branchIndex}`;
-          
+
           if (!endNodeIds.has(endNodeId)) {
             endNodeIds.add(endNodeId);
-            
+
             // 计算结束节点位置（在当前节点右侧）
             const endNode: FlowchartNode = {
               id: endNodeId,
@@ -133,7 +162,7 @@ export function workflowToFlowchart(workflow: WorkflowResponse): {
         } else {
           // 创建到其他步骤的分支边
           const targetExists = sortedSteps.some(s => s.id === branch.next_step_id);
-          
+
           if (targetExists) {
             const edge: FlowchartEdge = {
               id: `${step.id}-branch-${branchIndex}`,
@@ -163,9 +192,9 @@ export function calculateLayout(
   steps: WorkflowStepResponse[]
 ): Map<string, { x: number; y: number }> {
   const positions = new Map<string, { x: number; y: number }>();
-  
+
   const sortedSteps = [...steps].sort((a, b) => a.step_order - b.step_order);
-  
+
   sortedSteps.forEach((step, index) => {
     positions.set(step.id, {
       x: START_X,

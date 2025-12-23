@@ -8,7 +8,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_settings
-from app.routers import example_router, file_router, protocol_router, step_router, workflow_router
+from app.routers import (
+    analysis_router,
+    example_router,
+    file_router,
+    protocol_router,
+    step_router,
+    workflow_router,
+    task_router,
+    note_router,
+    template_router,
+    status_router,
+)
+from app.routers.step_simple import router as step_simple_router
 
 settings = get_settings()
 
@@ -47,6 +59,12 @@ app.include_router(step_router)
 app.include_router(example_router)
 app.include_router(protocol_router)
 app.include_router(file_router)
+app.include_router(analysis_router)
+app.include_router(task_router)
+app.include_router(note_router)
+app.include_router(template_router)
+app.include_router(status_router)
+app.include_router(step_simple_router)
 
 
 @app.get("/")
