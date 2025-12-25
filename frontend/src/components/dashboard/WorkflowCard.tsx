@@ -80,7 +80,7 @@ export function WorkflowCard({ workflow, onRefresh }: WorkflowCardProps) {
 
   return (
     <Card
-      className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow relative"
+      className="overflow-hidden cursor-pointer shadow-depth-1 hover-lift relative"
       onClick={handleClick}
     >
       {/* 封面图区域 */}

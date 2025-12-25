@@ -12,7 +12,9 @@ import {
     ArrowLeft,
     Loader2,
     X,
-    Trash2
+    Trash2,
+    CloudUpload,
+    CheckCircle2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -372,6 +374,39 @@ export default function WorkerCollect() {
                 </div>
             </header>
 
+            {/* 图形化进度条 */}
+            {(() => {
+                const totalSteps = tasks.reduce((sum, t) => sum + (t.steps?.length || 0), 0);
+                const filledSteps = tasks.reduce((sum, t) =>
+                    sum + (t.steps?.filter(s => s.context_description || (s.notes && s.notes.length > 0)).length || 0), 0);
+                const progress = totalSteps > 0 ? (filledSteps / totalSteps) * 100 : 0;
+
+                return (
+                    <div className="bg-white border-b border-slate-200 px-4 py-3">
+                        <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                                <CheckCircle2 className={`h-4 w-4 ${progress === 100 ? 'text-emerald-500' : 'text-slate-400'}`} />
+                                <span className="text-sm font-medium text-slate-700">
+                                    采集进度
+                                </span>
+                            </div>
+                            <span className="text-sm text-slate-500">
+                                {filledSteps}/{totalSteps} 步骤已完成
+                            </span>
+                        </div>
+                        <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                            <div
+                                className={`h-full rounded-full transition-all duration-500 ${progress === 100
+                                        ? 'bg-gradient-to-r from-emerald-400 to-emerald-500'
+                                        : 'bg-gradient-to-r from-indigo-400 to-indigo-600'
+                                    }`}
+                                style={{ width: `${progress}%` }}
+                            />
+                        </div>
+                    </div>
+                );
+            })()}
+
             {/* 三级树形结构 */}
             <main className="p-4 pb-32">
                 <div className="space-y-2">
@@ -497,12 +532,12 @@ export default function WorkerCollect() {
                                                                 </div>
                                                             </div>
 
-                                                            {/* 右边：上传按钮 */}
+                                                            {/* 右边：上传区域 - 美化版 Dropzone */}
                                                             <div className="w-32">
                                                                 <label className="block text-sm font-medium text-slate-600 mb-2">
                                                                     📎 上传
                                                                 </label>
-                                                                <div className="h-40 border-2 border-dashed border-slate-300 rounded-lg bg-slate-50 hover:bg-indigo-50 hover:border-indigo-400 transition-all cursor-pointer flex flex-col items-center justify-center">
+                                                                <div className="h-40 border-2 border-dashed border-slate-300 rounded-xl bg-gradient-to-br from-slate-50 to-indigo-50 hover:from-indigo-50 hover:to-purple-50 hover:border-indigo-400 hover:scale-[1.02] transition-all duration-200 cursor-pointer flex flex-col items-center justify-center group">
                                                                     <input
                                                                         type="file"
                                                                         className="hidden"
@@ -512,8 +547,11 @@ export default function WorkerCollect() {
                                                                         onChange={(e) => handleFileUpload(step.id, e.target.files)}
                                                                     />
                                                                     <label htmlFor={`file-upload-${step.id}`} className="cursor-pointer text-center">
-                                                                        <Plus className="h-8 w-8 text-indigo-500 mx-auto mb-1" />
-                                                                        <span className="text-xs text-slate-500">点击上传</span>
+                                                                        <div className="w-12 h-12 mb-2 mx-auto rounded-full bg-indigo-100 group-hover:bg-indigo-200 flex items-center justify-center transition-colors">
+                                                                            <CloudUpload className="h-6 w-6 text-indigo-500 group-hover:scale-110 transition-transform" />
+                                                                        </div>
+                                                                        <span className="text-xs text-slate-500 group-hover:text-indigo-600">点击上传</span>
+                                                                        <p className="text-[10px] text-slate-400 mt-1">图片/音频/视频</p>
                                                                     </label>
                                                                 </div>
                                                             </div>

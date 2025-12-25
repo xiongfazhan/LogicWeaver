@@ -14,11 +14,16 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      {/* Header - 包含标题和用户头像 */}
-      <header className="bg-white border-b border-slate-200 px-6 py-4">
+      {/* Header - 渐变背景 + 动态问候 */}
+      <header className="bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-700 px-6 py-6 shadow-depth-2">
         <div className="flex items-center justify-between max-w-7xl mx-auto">
-          <h1 className="text-2xl font-bold text-slate-900">📋 我的工作流</h1>
-          <div className="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center text-white font-medium">
+          <div>
+            <p className="text-indigo-100 text-sm mb-1">
+              {new Date().getHours() < 12 ? '早上好' : new Date().getHours() < 18 ? '下午好' : '晚上好'}，业务专家 👋
+            </p>
+            <h1 className="text-2xl font-bold text-white">📋 我的工作流</h1>
+          </div>
+          <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-white font-medium ring-2 ring-white/30">
             U
           </div>
         </div>

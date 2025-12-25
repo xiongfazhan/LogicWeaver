@@ -365,11 +365,13 @@ export default function Review() {
                   <div
                     key={step.id}
                     id={`step-${task.id}-${stepIndex}`}
-                    className={`grid grid-cols-2 min-h-[200px] transition-all ${isConfirmed ? 'bg-emerald-50/30' : ''
+                    className={`grid grid-cols-2 min-h-[200px] transition-all ${isConfirmed
+                      ? 'bg-emerald-50 ring-2 ring-emerald-500 ring-inset'
+                      : ''
                       }`}
                   >
-                    {/* Left - 用户描述 */}
-                    <div className="bg-slate-100 p-4 border-r border-slate-200">
+                    {/* Left - 用户描述 (深色背景模拟草稿质感) */}
+                    <div className="bg-slate-200/80 p-4 border-r border-slate-300">
                       <SourceCard step={step} index={stepIndex} onImageClick={setPreviewImage} />
                     </div>
 
@@ -651,7 +653,7 @@ function FieldDisplay({ field, showTech }: FieldDisplayProps) {
           </p>
         </div>
         {showTech && (
-          <code className="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded">
+          <code className="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded font-mono-tech">
             {field.name}: {field.type}
           </code>
         )}
