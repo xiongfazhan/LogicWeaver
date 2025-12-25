@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { useCreateWorkflow } from '@/hooks/useWorkflows';
 
 interface TemplateTask {
     name: string;
@@ -74,10 +75,10 @@ const MOCK_TEMPLATES: Template[] = [
 
 export function TemplateSelectModal({ open, onOpenChange }: TemplateSelectModalProps) {
     const navigate = useNavigate();
+    const createWorkflow = useCreateWorkflow();
     const [step, setStep] = useState<'select' | 'name'>('select');
     const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
     const [workflowName, setWorkflowName] = useState('');
-    const [isCreating, setIsCreating] = useState(false);
 
     const handleSelectTemplate = (template: Template) => {
         setSelectedTemplate(template);
@@ -88,26 +89,17 @@ export function TemplateSelectModal({ open, onOpenChange }: TemplateSelectModalP
     const handleCreateWorkflow = async () => {
         if (!selectedTemplate || !workflowName.trim()) return;
 
-        setIsCreating(true);
         try {
-            // TODO: 调用 API 创建工作流
-            // const response = await fetch(`/api/templates/${selectedTemplate.id}/create`, {
-            //   method: 'POST',
-            //   headers: { 'Content-Type': 'application/json' },
-            //   body: JSON.stringify({ name: workflowName }),
-            // });
-            // const data = await response.json();
-
-            // 模拟创建成功
-            await new Promise(resolve => setTimeout(resolve, 500));
+            // 调用 API 创建工作流
+            const workflow = await createWorkflow.mutateAsync({
+                name: workflowName.trim(),
+                description: selectedTemplate.description || undefined,
+            });
 
             onOpenChange(false);
-            // navigate(`/workflow/${data.id}/worker`);
-            navigate(`/workflow/new-${Date.now()}/worker`);
+            navigate(`/workflow/${workflow.id}/worker`);
         } catch (error) {
             console.error('Failed to create workflow:', error);
-        } finally {
-            setIsCreating(false);
         }
     };
 
@@ -134,9 +126,16 @@ export function TemplateSelectModal({ open, onOpenChange }: TemplateSelectModalP
                             {/* 空白模板 */}
                             <Card
                                 className="cursor-pointer hover:border-indigo-400 hover:shadow-md transition-all"
-                                onClick={() => {
-                                    onOpenChange(false);
-                                    navigate(`/workflow/new-${Date.now()}/worker`);
+                                onClick={async () => {
+                                    try {
+                                        const workflow = await createWorkflow.mutateAsync({
+                                            name: `新工作流 ${new Date().toLocaleDateString('zh-CN')}`,
+                                        });
+                                        onOpenChange(false);
+                                        navigate(`/workflow/${workflow.id}/worker`);
+                                    } catch (error) {
+                                        console.error('Failed to create workflow:', error);
+                                    }
                                 }}
                             >
                                 <CardContent className="p-4">
@@ -212,10 +211,10 @@ export function TemplateSelectModal({ open, onOpenChange }: TemplateSelectModalP
                                 </Button>
                                 <Button
                                     onClick={handleCreateWorkflow}
-                                    disabled={!workflowName.trim() || isCreating}
+                                    disabled={!workflowName.trim() || createWorkflow.isPending}
                                     className="bg-indigo-600 hover:bg-indigo-700"
                                 >
-                                    {isCreating ? (
+                                    {createWorkflow.isPending ? (
                                         <>
                                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                             创建中...

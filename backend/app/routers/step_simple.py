@@ -113,7 +113,7 @@ async def create_step_for_task(
 ):
     """
     Create a new step under a specific task.
-    Automatically assigns step_order based on existing steps.
+    Automatically assigns step_order based on existing steps in the workflow.
     """
     from app.models import Task
     from sqlalchemy import func
@@ -126,10 +126,10 @@ async def create_step_for_task(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     
-    # Get next step_order for this task
+    # Get next step_order for this WORKFLOW (not task, due to unique constraint)
     order_result = await db.execute(
         select(func.coalesce(func.max(WorkflowStep.step_order), 0) + 1)
-        .where(WorkflowStep.task_id == task_id)
+        .where(WorkflowStep.workflow_id == task.workflow_id)
     )
     next_order = order_result.scalar()
     
@@ -154,3 +154,22 @@ async def create_step_for_task(
         status=new_step.status,
     )
 
+
+@router.delete("/{step_id}")
+async def delete_step(
+    step_id: UUID,
+    db: AsyncSession = Depends(get_async_db),
+):
+    """Delete a step by ID."""
+    result = await db.execute(
+        select(WorkflowStep).where(WorkflowStep.id == step_id)
+    )
+    step = result.scalar_one_or_none()
+    
+    if not step:
+        raise HTTPException(status_code=404, detail="Step not found")
+    
+    await db.delete(step)
+    await db.commit()
+    
+    return {"message": "Step deleted successfully"}

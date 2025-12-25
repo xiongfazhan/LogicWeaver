@@ -11,7 +11,7 @@ const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
         className: 'bg-slate-100 text-slate-700 hover:bg-slate-100',
     },
     worker_done: {
-        label: '待专家整理',
+        label: '待整理',
         className: 'bg-amber-100 text-amber-700 hover:bg-amber-100',
     },
     expert_done: {

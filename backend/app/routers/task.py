@@ -30,6 +30,16 @@ class TaskUpdate(BaseModel):
     status: Optional[str] = None
 
 
+class StepInfo(BaseModel):
+    """Simple step info for task response."""
+    id: UUID
+    name: str
+    step_order: int
+    context_description: Optional[str] = None
+    expert_notes: Optional[str] = None
+    status: str
+
+
 class TaskResponse(BaseModel):
     """Response schema for a task."""
     id: UUID
@@ -39,6 +49,7 @@ class TaskResponse(BaseModel):
     description: Optional[str]
     status: str
     steps_count: int = 0
+    steps: List[StepInfo] = []  # 添加 steps 列表
 
     class Config:
         from_attributes = True
@@ -75,6 +86,17 @@ async def get_workflow_tasks(
                 description=t.description,
                 status=t.status,
                 steps_count=len(t.steps) if t.steps else 0,
+                steps=[
+                    StepInfo(
+                        id=s.id,
+                        name=s.name,
+                        step_order=s.step_order,
+                        context_description=s.context_description,
+                        expert_notes=s.expert_notes,
+                        status=s.status,
+                    )
+                    for s in (t.steps or [])
+                ],
             )
             for t in tasks
         ]

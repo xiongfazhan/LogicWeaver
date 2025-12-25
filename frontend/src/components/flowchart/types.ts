@@ -38,8 +38,18 @@ export interface BranchEdgeData extends Record<string, unknown> {
   label?: string;
 }
 
+/** 任务分组节点数据 */
+export interface TaskGroupData extends Record<string, unknown> {
+  /** 任务名称 */
+  taskName: string;
+  /** 任务序号 */
+  taskOrder: number;
+  /** 步骤数量 */
+  stepCount: number;
+}
+
 /** Flowchart 节点类型 */
-export type FlowchartNode = Node<StepNodeData, 'stepNode'>;
+export type FlowchartNode = Node<StepNodeData, 'stepNode'> | Node<TaskGroupData, 'group'>;
 
 /** Flowchart 边类型 */
 export type FlowchartEdge = Edge<BranchEdgeData>;

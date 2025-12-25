@@ -28,12 +28,12 @@ interface CreateWorkflowModalProps {
 export function CreateWorkflowModal({ open, onOpenChange }: CreateWorkflowModalProps) {
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [coverImageUrl, setCoverImageUrl] = useState<string | null>(null);
   const [coverImagePreview, setCoverImagePreview] = useState<string | null>(null);
-  
+
   const createWorkflow = useCreateWorkflow();
   const uploadFile = useUploadFile();
 
@@ -70,7 +70,7 @@ export function CreateWorkflowModal({ open, onOpenChange }: CreateWorkflowModalP
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!name.trim()) return;
 
     try {
@@ -85,10 +85,10 @@ export function CreateWorkflowModal({ open, onOpenChange }: CreateWorkflowModalP
       setDescription('');
       setCoverImageUrl(null);
       setCoverImagePreview(null);
-      
+
       // 关闭模态框并跳转到 Builder
       onOpenChange(false);
-      navigate(`/workflow/${workflow.id}/builder`);
+      navigate(`/workflow/${workflow.id}/worker`);
     } catch (error) {
       console.error('Failed to create workflow:', error);
     }

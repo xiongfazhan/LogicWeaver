@@ -3,7 +3,7 @@
  * 核心用户：业务专家（老师傅）
  * 核心任务：确认 AI 理解是否正确，不对就回去改
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useWorkflow } from '@/hooks/useWorkflows';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -21,8 +21,33 @@ import {
   EyeOff,
   AlertCircle
 } from 'lucide-react';
-import type { StepContract, DataField } from '@/hooks/useAnalysis';
-import type { WorkflowStepResponse } from '@/api/generated/models/WorkflowStepResponse';
+import type { StepContract, DataField, AnalysisResponse } from '@/hooks/useAnalysis';
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+// 步骤数据类型（从 Tasks API 获取）
+interface StepData {
+  id: string;
+  name: string;
+  step_order: number;
+  context_description: string;
+  expert_notes: string;
+  status: string;
+  context_image_url?: string;
+  context_text_content?: string;
+  notes?: Array<{
+    id: string;
+    content_type: string;
+    content: string;
+  }>;
+}
+
+interface TaskData {
+  id: string;
+  name: string;
+  task_order: number;
+  steps: StepData[];
+}
 
 // 类型映射：技术类型 → 中文
 const TYPE_MAP: Record<string, string> = {
@@ -47,12 +72,27 @@ export default function Review() {
   // 获取工作流数据
   const { data: workflow, isLoading: workflowLoading, error: workflowError } = useWorkflow(id || null);
 
-  // 从 localStorage 读取分析结果
-  const [contracts, setContracts] = useState<StepContract[]>([]);
+  // 从 Tasks API 加载任务和步骤数据
+  const [tasks, setTasks] = useState<TaskData[]>([]);
+  const [stepsLoading, setStepsLoading] = useState(true);
+
+  // 从 tasks 派生所有步骤（用于统计和 step_id 查找）
+  const steps = useMemo(() => {
+    const allSteps: StepData[] = [];
+    for (const task of tasks) {
+      for (const step of task.steps || []) {
+        allSteps.push(step);
+      }
+    }
+    return allSteps;
+  }, [tasks]);
+
+  // 从 localStorage 读取分析结果（完整的 AnalysisResponse，包含 step_id）
+  const [analysisResults, setAnalysisResults] = useState<AnalysisResponse[]>([]);
   const [contractsLoading, setContractsLoading] = useState(true);
 
-  // 每个步骤的确认状态
-  const [confirmedSteps, setConfirmedSteps] = useState<Set<number>>(new Set());
+  // 每个步骤的确认状态（用 step.id 而不是索引）
+  const [confirmedSteps, setConfirmedSteps] = useState<Set<string>>(new Set());
 
   // 技术视图开关
   const [showTechView, setShowTechView] = useState(false);
@@ -60,12 +100,63 @@ export default function Review() {
   // 图片预览
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
+  // 加载任务和步骤数据
+  const loadTasks = useCallback(async () => {
+    if (!id) return;
+
+    try {
+      // 从 Tasks API 获取任务
+      const tasksRes = await fetch(`${API_BASE}/api/tasks/workflow/${id}`);
+      if (tasksRes.ok) {
+        const tasksData = await tasksRes.json();
+        const loadedTasks: TaskData[] = [];
+
+        for (const task of (tasksData.items || [])) {
+          const taskWithNotes: TaskData = {
+            id: task.id,
+            name: task.name,
+            task_order: task.task_order,
+            steps: [],
+          };
+
+          // 加载每个步骤的 notes
+          for (const step of (task.steps || [])) {
+            try {
+              const notesRes = await fetch(`${API_BASE}/api/notes/step/${step.id}`);
+              if (notesRes.ok) {
+                const notesData = await notesRes.json();
+                step.notes = notesData.items || [];
+              }
+            } catch { }
+            taskWithNotes.steps.push(step);
+          }
+
+          // 按 step_order 排序步骤
+          taskWithNotes.steps.sort((a: StepData, b: StepData) => a.step_order - b.step_order);
+          loadedTasks.push(taskWithNotes);
+        }
+
+        // 按 task_order 排序任务
+        loadedTasks.sort((a, b) => a.task_order - b.task_order);
+        setTasks(loadedTasks);
+      }
+    } catch (e) {
+      console.error('Failed to load tasks:', e);
+    } finally {
+      setStepsLoading(false);
+    }
+  }, [id]);
+
+  useEffect(() => {
+    loadTasks();
+  }, [loadTasks]);
+
   useEffect(() => {
     if (id) {
       const stored = localStorage.getItem(`contracts_${id}`);
       if (stored) {
         try {
-          setContracts(JSON.parse(stored));
+          setAnalysisResults(JSON.parse(stored));
         } catch (e) {
           console.error('Failed to parse contracts:', e);
         }
@@ -83,36 +174,43 @@ export default function Review() {
     }
   }, [id]);
 
-  // 确认步骤
-  const handleConfirmStep = (stepIndex: number) => {
-    const newConfirmed = new Set(confirmedSteps);
-    newConfirmed.add(stepIndex);
-    setConfirmedSteps(newConfirmed);
-    localStorage.setItem(`confirmed_${id}`, JSON.stringify([...newConfirmed]));
+  // 确认/取消确认步骤（使用 step.id）
+  const handleConfirmStep = (stepId: string) => {
+    setConfirmedSteps(prev => {
+      const next = new Set(prev);
+      next.add(stepId);
+      localStorage.setItem(`confirmed_${id}`, JSON.stringify([...next]));
+      return next;
+    });
   };
 
-  // 取消确认
-  const handleUnconfirmStep = (stepIndex: number) => {
-    const newConfirmed = new Set(confirmedSteps);
-    newConfirmed.delete(stepIndex);
-    setConfirmedSteps(newConfirmed);
-    localStorage.setItem(`confirmed_${id}`, JSON.stringify([...newConfirmed]));
+  const handleUnconfirmStep = (stepId: string) => {
+    setConfirmedSteps(prev => {
+      const next = new Set(prev);
+      next.delete(stepId);
+      localStorage.setItem(`confirmed_${id}`, JSON.stringify([...next]));
+      return next;
+    });
   };
 
   // 去修改步骤
   const handleEditStep = (stepIndex: number) => {
     // 跳转到 Builder 页面对应步骤
-    navigate(`/workflow/${id}/builder?step=${stepIndex}`);
+    navigate(`/workflow/${id}/worker?step=${stepIndex}`);
   };
 
   // 生成流程图
   const handleGenerateFlowchart = () => {
-    const allConfirmed = contracts.length > 0 && contracts.every((_, i) => confirmedSteps.has(i));
+    // 检查所有有分析结果的步骤是否都已确认
+    const stepsWithResult = steps.filter(s => analysisResults.some(r => r.step_id === s.id));
+    const allConfirmed = stepsWithResult.length > 0 && stepsWithResult.every(s => confirmedSteps.has(s.id));
+
     if (!allConfirmed) {
       // 找到第一个未确认的步骤并高亮
-      const firstUnconfirmed = contracts.findIndex((_, i) => !confirmedSteps.has(i));
-      if (firstUnconfirmed >= 0) {
-        const element = document.getElementById(`step-${firstUnconfirmed}`);
+      const firstUnconfirmed = stepsWithResult.find(s => !confirmedSteps.has(s.id));
+      if (firstUnconfirmed) {
+        const stepIndex = steps.findIndex(s => s.id === firstUnconfirmed.id);
+        const element = document.getElementById(`step-${stepIndex}`);
         element?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         element?.classList.add('ring-2', 'ring-amber-500', 'ring-offset-2');
         setTimeout(() => {
@@ -124,12 +222,13 @@ export default function Review() {
     navigate(`/workflow/${id}/flowchart`);
   };
 
-  // 是否全部确认
-  const allConfirmed = contracts.length > 0 && contracts.every((_, i) => confirmedSteps.has(i));
-  const confirmedCount = confirmedSteps.size;
+  // 统计信息
+  const stepsWithResult = steps.filter(s => analysisResults.some(r => r.step_id === s.id));
+  const allConfirmed = stepsWithResult.length > 0 && stepsWithResult.every(s => confirmedSteps.has(s.id));
+  const confirmedCount = stepsWithResult.filter(s => confirmedSteps.has(s.id)).length;
 
   // 加载状态
-  if (workflowLoading || contractsLoading) {
+  if (workflowLoading || contractsLoading || stepsLoading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
@@ -147,8 +246,6 @@ export default function Review() {
       </div>
     );
   }
-
-  const steps = workflow?.steps || [];
 
   return (
     <div className="min-h-screen bg-slate-50 pb-24">
@@ -178,7 +275,7 @@ export default function Review() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link
-              to={`/workflow/${id}/builder`}
+              to={`/workflow/${id}/worker`}
               className="flex items-center gap-2 text-slate-600 hover:text-slate-900 transition-colors"
             >
               <ArrowLeft className="h-5 w-5" />
@@ -193,14 +290,22 @@ export default function Review() {
             </div>
           </div>
 
-          {/* 技术视图开关 */}
-          <button
-            onClick={() => setShowTechView(!showTechView)}
-            className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-700"
-          >
-            {showTechView ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            {showTechView ? '隐藏技术参数' : '显示技术参数'}
-          </button>
+          {/* 操作按钮 */}
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => navigate('/')}
+              className="text-sm text-slate-500 hover:text-slate-700"
+            >
+              返回仪表盘
+            </button>
+            <button
+              onClick={() => setShowTechView(!showTechView)}
+              className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-700"
+            >
+              {showTechView ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              {showTechView ? '隐藏技术参数' : '显示技术参数'}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -215,7 +320,7 @@ export default function Review() {
             variant={allConfirmed ? 'success' : 'secondary'}
             className="text-sm"
           >
-            {confirmedCount}/{contracts.length} 已确认
+            {confirmedCount}/{stepsWithResult.length} 已确认
           </Badge>
         </div>
       </div>
@@ -230,44 +335,68 @@ export default function Review() {
         </div>
       </div>
 
-      {/* Step Rows */}
-      <div className="divide-y divide-slate-200">
-        {steps.map((step, index) => {
-          const contract = contracts[index];
-          const isConfirmed = confirmedSteps.has(index);
-          return (
-            <div
-              key={step.id}
-              id={`step-${index}`}
-              className={`grid grid-cols-2 min-h-[200px] transition-all ${isConfirmed ? 'bg-emerald-50/30' : ''
-                }`}
-            >
-              {/* Left - 用户描述 */}
-              <div className="bg-slate-100 p-4 border-r border-slate-200">
-                <SourceCard step={step} index={index} onImageClick={setPreviewImage} />
-              </div>
-
-              {/* Right - AI 理解 */}
-              <div className="bg-white p-4">
-                {contract ? (
-                  <AIUnderstandingCard
-                    contract={contract}
-                    index={index}
-                    isConfirmed={isConfirmed}
-                    showTechView={showTechView}
-                    onConfirm={() => handleConfirmStep(index)}
-                    onUnconfirm={() => handleUnconfirmStep(index)}
-                    onEdit={() => handleEditStep(index)}
-                  />
-                ) : (
-                  <div className="h-full flex items-center justify-center text-slate-400">
-                    暂无 AI 分析结果
-                  </div>
-                )}
+      {/* Task Groups with Steps */}
+      <div className="divide-y divide-slate-300">
+        {tasks.map((task, taskIndex) => (
+          <div key={task.id} className="bg-white">
+            {/* Task Header */}
+            <div className="bg-indigo-50 border-b border-indigo-200 px-6 py-3 sticky top-[117px] z-10">
+              <div className="flex items-center gap-3">
+                <span className="flex items-center justify-center w-7 h-7 rounded-full bg-indigo-600 text-white text-sm font-bold">
+                  {taskIndex + 1}
+                </span>
+                <h3 className="text-lg font-semibold text-indigo-900">{task.name}</h3>
+                <span className="text-sm text-indigo-500 ml-auto">
+                  {task.steps.length} 个步骤
+                </span>
               </div>
             </div>
-          );
-        })}
+
+            {/* Steps in this Task */}
+            <div className="divide-y divide-slate-200">
+              {task.steps.map((step, stepIndex) => {
+                // 用 step_id 查找对应的分析结果
+                const analysisResult = analysisResults.find(r => r.step_id === step.id);
+                const contract = analysisResult?.result.contract;
+                const isConfirmed = confirmedSteps.has(step.id);
+                // 计算全局步骤索引（用于编辑跳转）
+                const globalIndex = steps.findIndex(s => s.id === step.id);
+                return (
+                  <div
+                    key={step.id}
+                    id={`step-${task.id}-${stepIndex}`}
+                    className={`grid grid-cols-2 min-h-[200px] transition-all ${isConfirmed ? 'bg-emerald-50/30' : ''
+                      }`}
+                  >
+                    {/* Left - 用户描述 */}
+                    <div className="bg-slate-100 p-4 border-r border-slate-200">
+                      <SourceCard step={step} index={stepIndex} onImageClick={setPreviewImage} />
+                    </div>
+
+                    {/* Right - AI 理解 */}
+                    <div className="bg-white p-4">
+                      {contract ? (
+                        <AIUnderstandingCard
+                          contract={contract}
+                          index={stepIndex}
+                          isConfirmed={isConfirmed}
+                          showTechView={showTechView}
+                          onConfirm={() => handleConfirmStep(step.id)}
+                          onUnconfirm={() => handleUnconfirmStep(step.id)}
+                          onEdit={() => handleEditStep(globalIndex)}
+                        />
+                      ) : (
+                        <div className="h-full flex items-center justify-center text-slate-400">
+                          暂无 AI 分析结果
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
 
       {/* Floating Footer */}
@@ -282,7 +411,7 @@ export default function Review() {
             ) : (
               <span className="flex items-center gap-1">
                 <AlertCircle className="h-4 w-4 text-amber-500" />
-                还有 {contracts.length - confirmedCount} 个步骤待确认
+                还有 {stepsWithResult.length - confirmedCount} 个步骤待确认
               </span>
             )}
           </div>
@@ -304,12 +433,15 @@ export default function Review() {
 // ============================================================================
 
 interface SourceCardProps {
-  step: WorkflowStepResponse;
+  step: StepData;
   index: number;
   onImageClick: (url: string) => void;
 }
 
 function SourceCard({ step, index, onImageClick }: SourceCardProps) {
+  // 获取图片类型的 notes
+  const imageNotes = step.notes?.filter(n => n.content_type === 'image') || [];
+
   return (
     <Card className="bg-white h-full">
       <CardHeader className="pb-2">
@@ -323,23 +455,6 @@ function SourceCard({ step, index, onImageClick }: SourceCardProps) {
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
-        {/* 图片 */}
-        {step.context_image_url && (
-          <div
-            className="relative group cursor-pointer"
-            onClick={() => onImageClick(step.context_image_url!)}
-          >
-            <img
-              src={step.context_image_url}
-              alt="Context"
-              className="w-full h-32 object-cover rounded-lg border border-slate-200"
-            />
-            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors rounded-lg flex items-center justify-center">
-              <ZoomIn className="h-8 w-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-            </div>
-          </div>
-        )}
-
         {/* 描述 */}
         {step.context_description && (
           <div className="bg-slate-50 p-3 rounded-lg">
@@ -347,11 +462,48 @@ function SourceCard({ step, index, onImageClick }: SourceCardProps) {
           </div>
         )}
 
-        {/* 文本材料 */}
-        {step.context_text_content && (
-          <div className="bg-blue-50 p-3 rounded-lg">
-            <p className="text-xs text-blue-600 mb-1">📄 文本材料</p>
-            <p className="text-sm text-slate-700">{step.context_text_content}</p>
+        {/* 专家备注 */}
+        {step.expert_notes && (
+          <div className="bg-amber-50 p-3 rounded-lg border border-amber-100">
+            <p className="text-xs text-amber-600 mb-1">✨ 备注</p>
+            <p className="text-sm text-slate-700 whitespace-pre-wrap">{step.expert_notes}</p>
+          </div>
+        )}
+
+        {/* 图片素材 - 从 notes 中获取 */}
+        {imageNotes.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs text-slate-500">📷 图片素材</p>
+            <div className="grid grid-cols-2 gap-2">
+              {imageNotes.map((note) => {
+                const imgUrl = note.content.startsWith('http')
+                  ? note.content
+                  : `${API_BASE}${note.content}`;
+                return (
+                  <div
+                    key={note.id}
+                    className="relative group cursor-pointer"
+                    onClick={() => onImageClick(imgUrl)}
+                  >
+                    <img
+                      src={imgUrl}
+                      alt="素材"
+                      className="w-full h-24 object-cover rounded-lg border border-slate-200"
+                    />
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors rounded-lg flex items-center justify-center">
+                      <ZoomIn className="h-6 w-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* 无内容提示 */}
+        {!step.context_description && !step.expert_notes && imageNotes.length === 0 && (
+          <div className="text-center py-4 text-slate-400 text-sm">
+            暂无采集内容
           </div>
         )}
       </CardContent>
@@ -383,8 +535,8 @@ function AIUnderstandingCard({
 }: AIUnderstandingCardProps) {
   return (
     <Card className={`h-full transition-all ${isConfirmed
-        ? 'border-emerald-300 bg-emerald-50/50'
-        : 'border-slate-200'
+      ? 'border-emerald-300 bg-emerald-50/50'
+      : 'border-slate-200'
       }`}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">

@@ -300,7 +300,8 @@ class AIAnalysisService:
         analysis_input = self._build_step_input(step, previous_outputs)
         
         # Check if there's anything to analyze
-        has_materials = bool(
+        # 检查旧字段
+        has_old_materials = bool(
             step.context_image_url or 
             step.context_text_content or 
             step.context_voice_transcript
@@ -309,8 +310,13 @@ class AIAnalysisService:
             step.context_description or 
             step.logic_evaluation_prompt
         )
+        # 检查新字段：整理备注和 notes
+        has_expert_notes = bool(step.expert_notes)
+        has_notes = bool(hasattr(step, 'notes') and step.notes and len(step.notes) > 0)
         
-        if not has_description and not has_materials:
+        has_materials = has_old_materials or has_notes
+        
+        if not has_description and not has_materials and not has_expert_notes:
             # 什么都没填，返回空结果
             return AnalysisResponse(
                 step_id=str(step_id),
@@ -383,23 +389,48 @@ class AIAnalysisService:
         if description:
             parts.append(f"## 步骤描述\n{description}")
         
-        # Materials
-        materials = []
+        # 整理备注（expert_notes）- 专家整理的补充说明
+        if step.expert_notes:
+            parts.append(f"## 整理备注\n{step.expert_notes}")
+        
+        # Notes 素材（从 step_notes 表获取）
+        notes_materials = []
+        if hasattr(step, 'notes') and step.notes:
+            for note in step.notes:
+                if note.content_type == 'image':
+                    notes_materials.append(f"- 📷 图片素材: {note.content}")
+                elif note.content_type == 'voice':
+                    # 语音：显示转文字结果
+                    transcript = note.voice_transcript or "(语音未转文字)"
+                    notes_materials.append(f"- 🎤 语音转文字: {transcript}")
+                elif note.content_type == 'text':
+                    text = note.content
+                    if len(text) > 500:
+                        text = text[:500] + "..."
+                    notes_materials.append(f"- 📝 文本材料:\n{text}")
+                elif note.content_type == 'video':
+                    notes_materials.append(f"- 🎬 视频素材: {note.content}")
+        
+        if notes_materials:
+            parts.append("## 采集的素材\n" + "\n".join(notes_materials))
+        
+        # 旧的材料字段（兼容）
+        old_materials = []
         if step.context_image_url:
-            materials.append(f"- 图片材料: {step.context_image_url}")
+            old_materials.append(f"- 图片材料: {step.context_image_url}")
         if step.context_text_content:
             text = step.context_text_content
             if len(text) > 500:
                 text = text[:500] + "..."
-            materials.append(f"- 文本材料:\n{text}")
+            old_materials.append(f"- 文本材料:\n{text}")
         if step.context_voice_transcript:
             voice = step.context_voice_transcript
             if len(voice) > 500:
                 voice = voice[:500] + "..."
-            materials.append(f"- 语音转写:\n{voice}")
+            old_materials.append(f"- 语音转写:\n{voice}")
         
-        if materials:
-            parts.append("## 参考材料\n" + "\n".join(materials))
+        if old_materials:
+            parts.append("## 参考材料\n" + "\n".join(old_materials))
         
         return "\n\n".join(parts)
 
@@ -418,10 +449,39 @@ class AIAnalysisService:
             else:
                 json_str = raw_result.strip()
             
-            data = json.loads(json_str)
+            # 预处理：修复 LLM 生成的格式错误
+            # 有时 LLM 会返回 "example": "{...}" 而不是 "example": {...}
+            # 或者嵌套 JSON 字符串中的引号没有转义
+            import re
+            
+            # 尝试直接解析，如果失败则尝试修复
+            try:
+                data = json.loads(json_str)
+            except json.JSONDecodeError:
+                # 尝试修复常见问题：将 "example": 后的不合法值替换为 null
+                fixed_json = re.sub(
+                    r'"example"\s*:\s*(?:"?\{[^}]+\}[^,\n]*|"?\[[^\]]+\][^,\n]*|\d+(?:\.\d+)?|true|false)',
+                    '"example": null',
+                    json_str
+                )
+                try:
+                    data = json.loads(fixed_json)
+                    logger.info("Fixed malformed JSON by removing problematic example values")
+                except json.JSONDecodeError:
+                    # 如果还是失败，抛出原始错误
+                    data = json.loads(json_str)
             
             # Parse contract
             contract_data = data.get("contract", {})
+            
+            # 辅助函数：将 example 转换为字符串
+            def to_str_example(val):
+                if val is None:
+                    return None
+                if isinstance(val, str):
+                    return val
+                # 列表、数字、布尔值等转为 JSON 字符串
+                return json.dumps(val, ensure_ascii=False)
             
             # Parse inputs
             inputs = []
@@ -431,7 +491,7 @@ class AIAnalysisService:
                     type=field_data.get("type", "string"),
                     description=field_data.get("description", ""),
                     required=field_data.get("required", True),
-                    example=field_data.get("example"),
+                    example=to_str_example(field_data.get("example")),
                 ))
             
             # Parse outputs
@@ -442,7 +502,7 @@ class AIAnalysisService:
                     type=field_data.get("type", "string"),
                     description=field_data.get("description", ""),
                     required=field_data.get("required", True),
-                    example=field_data.get("example"),
+                    example=to_str_example(field_data.get("example")),
                 ))
             
             contract = StepContract(

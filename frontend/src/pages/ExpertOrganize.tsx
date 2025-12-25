@@ -14,10 +14,14 @@ import {
     Save,
     Eye,
     FileText,
-    Loader2
+    Loader2,
+    Brain,
+    CheckCircle,
+    XCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { useAnalyzeAllSteps } from '@/hooks/useAnalysis';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -58,12 +62,17 @@ interface WorkflowInfo {
 export default function ExpertOrganize() {
     const { id: workflowId } = useParams<{ id: string }>();
     const navigate = useNavigate();
+    const analyzeAllSteps = useAnalyzeAllSteps();
 
     const [workflow, setWorkflow] = useState<WorkflowInfo | null>(null);
     const [tasks, setTasks] = useState<TaskData[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    // AI 分析状态
+    const [analysisStatus, setAnalysisStatus] = useState<'idle' | 'analyzing' | 'success' | 'error'>('idle');
+    const [analysisMessage, setAnalysisMessage] = useState('');
 
     // 当前选中的任务/步骤
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -163,16 +172,50 @@ export default function ExpertOrganize() {
 
     // 提交到 AI 分析
     const handleSubmitToAI = async () => {
-        setSaving(true);
-        try {
-            await fetch(`${API_BASE}/api/status/workflow/${workflowId}/advance`, {
-                method: 'POST',
+        // 收集所有步骤 ID
+        const allStepIds: string[] = [];
+        tasks.forEach(task => {
+            (task.steps || []).forEach(step => {
+                allStepIds.push(step.id);
             });
+        });
+
+        if (allStepIds.length === 0) {
             navigate(`/workflow/${workflowId}/review`);
+            return;
+        }
+
+        // 开始 AI 分析
+        setAnalysisStatus('analyzing');
+        setAnalysisMessage(`正在分析 ${allStepIds.length} 个步骤...`);
+
+        try {
+            const results = await analyzeAllSteps.mutateAsync(allStepIds);
+
+            // 保存完整的分析结果到 localStorage（包含 step_id 用于匹配）
+            // 注意：results 包含 step_id (UUID) 用于与步骤匹配
+            localStorage.setItem(`contracts_${workflowId}`, JSON.stringify(results));
+
+            setAnalysisStatus('success');
+            setAnalysisMessage(`分析完成！成功分析 ${results.length} 个步骤`);
+
+            // 短暂显示成功状态后跳转
+            setTimeout(() => {
+                navigate(`/workflow/${workflowId}/review`);
+            }, 1500);
+
         } catch (e) {
-            console.error('Failed to submit:', e);
-        } finally {
-            setSaving(false);
+            setAnalysisStatus('error');
+            setAnalysisMessage(
+                e instanceof Error
+                    ? e.message
+                    : 'AI 分析失败，但仍可查看复核结果'
+            );
+
+            // 3秒后允许继续
+            setTimeout(() => {
+                setAnalysisStatus('idle');
+            }, 3000);
         }
     };
 
@@ -201,7 +244,53 @@ export default function ExpertOrganize() {
     }
 
     return (
-        <div className="min-h-screen bg-slate-50 flex flex-col">
+        <div className="min-h-screen bg-slate-50 flex flex-col relative">
+            {/* AI 分析遮罩 */}
+            {analysisStatus !== 'idle' && (
+                <div className="absolute inset-0 bg-black/50 z-50 flex items-center justify-center">
+                    <div className="bg-white rounded-xl p-8 max-w-md mx-4 shadow-2xl">
+                        <div className="flex flex-col items-center text-center space-y-4">
+                            {analysisStatus === 'analyzing' && (
+                                <>
+                                    <div className="relative">
+                                        <Brain className="w-16 h-16 text-indigo-600" />
+                                        <Loader2 className="w-8 h-8 text-indigo-600 animate-spin absolute -bottom-1 -right-1" />
+                                    </div>
+                                    <h3 className="text-xl font-semibold text-slate-800">AI 正在分析样本</h3>
+                                    <p className="text-slate-600">{analysisMessage}</p>
+                                    <div className="w-full bg-slate-200 rounded-full h-2">
+                                        <div className="bg-indigo-600 h-2 rounded-full animate-pulse" style={{ width: '60%' }} />
+                                    </div>
+                                </>
+                            )}
+
+                            {analysisStatus === 'success' && (
+                                <>
+                                    <CheckCircle className="w-16 h-16 text-emerald-600" />
+                                    <h3 className="text-xl font-semibold text-slate-800">分析完成</h3>
+                                    <p className="text-slate-600">{analysisMessage}</p>
+                                    <p className="text-sm text-slate-400">正在跳转到复核页面...</p>
+                                </>
+                            )}
+
+                            {analysisStatus === 'error' && (
+                                <>
+                                    <XCircle className="w-16 h-16 text-amber-500" />
+                                    <h3 className="text-xl font-semibold text-slate-800">分析遇到问题</h3>
+                                    <p className="text-slate-600">{analysisMessage}</p>
+                                    <button
+                                        onClick={() => navigate(`/workflow/${workflowId}/review`)}
+                                        className="mt-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
+                                    >
+                                        继续前往复核
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Header */}
             <header className="bg-white border-b border-slate-200 px-6 py-4 sticky top-0 z-10">
                 <div className="flex items-center justify-between">
@@ -210,7 +299,7 @@ export default function ExpertOrganize() {
                             <ArrowLeft className="h-5 w-5" />
                         </Link>
                         <div>
-                            <h1 className="text-xl font-semibold text-slate-900">📝 专家整理模式</h1>
+                            <h1 className="text-xl font-semibold text-slate-900">📝 整理模式</h1>
                             <p className="text-sm text-slate-500">{workflow?.name}</p>
                         </div>
                     </div>
@@ -252,8 +341,8 @@ export default function ExpertOrganize() {
                                             <button
                                                 key={step.id}
                                                 className={`w-full text-left p-2 rounded flex items-center justify-between text-xs ${selectedStepId === step.id
-                                                        ? 'bg-indigo-100 text-indigo-700'
-                                                        : 'hover:bg-slate-50'
+                                                    ? 'bg-indigo-100 text-indigo-700'
+                                                    : 'hover:bg-slate-50'
                                                     }`}
                                                 onClick={() => setSelectedStepId(step.id)}
                                             >
@@ -310,21 +399,31 @@ export default function ExpertOrganize() {
                                         {selectedStep.notes.map(note => (
                                             <div key={note.id} className="flex items-start gap-3 p-3 bg-slate-50 rounded">
                                                 {note.content_type === 'image' && (
-                                                    <>
-                                                        <ImageIcon className="h-5 w-5 text-blue-500 mt-0.5" />
-                                                        <div>
+                                                    <div className="w-full">
+                                                        <div className="flex items-center gap-2 mb-2">
+                                                            <ImageIcon className="h-4 w-4 text-blue-500" />
                                                             <span className="text-sm text-slate-600">📷 图片</span>
-                                                            <p className="text-xs text-slate-400 mt-1">{note.content}</p>
                                                         </div>
-                                                    </>
+                                                        <img
+                                                            src={note.content.startsWith('http') ? note.content : `${API_BASE}${note.content}`}
+                                                            alt="工人上传的图片"
+                                                            className="w-full max-w-md rounded-lg border border-slate-200 cursor-pointer hover:opacity-90 transition-opacity"
+                                                            onClick={() => window.open(note.content.startsWith('http') ? note.content : `${API_BASE}${note.content}`, '_blank')}
+                                                        />
+                                                    </div>
                                                 )}
                                                 {note.content_type === 'voice' && (
                                                     <>
                                                         <Mic className="h-5 w-5 text-green-500 mt-0.5" />
                                                         <div>
                                                             <span className="text-sm text-slate-600">🎤 语音</span>
+                                                            <audio
+                                                                controls
+                                                                className="mt-2 w-full max-w-xs"
+                                                                src={note.content.startsWith('http') ? note.content : `${API_BASE}${note.content}`}
+                                                            />
                                                             {note.voice_transcript && (
-                                                                <p className="text-sm text-slate-700 mt-1 italic">
+                                                                <p className="text-sm text-slate-700 mt-2 italic bg-white p-2 rounded">
                                                                     "{note.voice_transcript}"
                                                                 </p>
                                                             )}
@@ -365,7 +464,7 @@ export default function ExpertOrganize() {
                 {/* 右侧：专家整理区 */}
                 <aside className="w-80 bg-white border-l border-slate-200 p-4 flex flex-col">
                     <h2 className="text-sm font-medium text-amber-600 mb-3 flex items-center gap-2">
-                        <span>✨</span> 专家整理
+                        <span>✨</span> 整理
                     </h2>
 
                     {selectedStep ? (
@@ -395,7 +494,7 @@ export default function ExpertOrganize() {
                         </>
                     ) : (
                         <div className="flex-1 flex items-center justify-center text-slate-400 text-sm text-center">
-                            选择一个步骤后<br />可以在这里整理专家备注
+                            选择一个步骤后<br />可以在这里整理备注
                         </div>
                     )}
                 </aside>

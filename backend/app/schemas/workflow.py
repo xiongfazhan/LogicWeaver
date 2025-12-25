@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 # Enums as Literal types
 # ============================================================================
 
-WorkflowStatus = Literal["draft", "deployed"]
+WorkflowStatus = Literal["draft", "worker_done", "expert_done", "analyzed", "confirmed", "delivered", "deployed"]
 StepStatus = Literal["pending", "completed"]
 ContextType = Literal["image", "text", "voice"]
 LogicStrategy = Literal["rule_based", "few_shot"]

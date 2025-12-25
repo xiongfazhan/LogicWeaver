@@ -9,10 +9,10 @@ import {
     Plus,
     ChevronRight,
     ChevronDown,
-    Camera,
-    Mic,
     ArrowLeft,
-    Loader2
+    Loader2,
+    X,
+    Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -39,6 +39,13 @@ interface StepData {
     expert_notes: string;
     status: string;
     expanded?: boolean;
+    notes?: NoteData[];
+}
+
+interface NoteData {
+    id: string;
+    content_type: 'image' | 'voice' | 'video' | 'text';
+    content: string;
 }
 
 interface WorkflowInfo {
@@ -61,6 +68,9 @@ export default function WorkerCollect() {
     const [addingStepTaskId, setAddingStepTaskId] = useState<string | null>(null); // 正在添加步骤的任务ID
     const [newItemName, setNewItemName] = useState('');
 
+    // 图片预览模态框
+    const [previewImage, setPreviewImage] = useState<string | null>(null);
+
     // 加载工作流和任务数据
     const loadData = useCallback(async () => {
         if (!workflowId) return;
@@ -79,14 +89,25 @@ export default function WorkerCollect() {
             if (!tasksRes.ok) throw new Error('Failed to fetch tasks');
             const tasksData = await tasksRes.json();
 
-            // 为每个任务获取步骤
+            // 为每个任务获取步骤和 notes
             const tasksWithSteps = await Promise.all(
                 (tasksData.items || []).map(async (task: any) => {
-                    // 假设后端返回的 task 已经包含 steps 信息
-                    // 如果不包含，需要单独获取
+                    // 获取每个 step 的 notes
+                    const stepsWithNotes = await Promise.all(
+                        (task.steps || []).map(async (step: any) => {
+                            try {
+                                const notesRes = await fetch(`${API_BASE}/api/notes/step/${step.id}`);
+                                if (notesRes.ok) {
+                                    const notesData = await notesRes.json();
+                                    return { ...step, notes: notesData.items || [], expanded: false };
+                                }
+                            } catch { /* ignore */ }
+                            return { ...step, notes: [], expanded: false };
+                        })
+                    );
                     return {
                         ...task,
-                        steps: task.steps || [],
+                        steps: stepsWithNotes,
                         expanded: true,
                     };
                 })
@@ -147,6 +168,106 @@ export default function WorkerCollect() {
             });
         } catch (e) {
             console.error('Failed to save step description:', e);
+        }
+    };
+
+    // 处理文件上传
+    const handleFileUpload = async (stepId: string, files: FileList | null) => {
+        if (!files || files.length === 0) return;
+
+        setSaving(true);
+        try {
+            for (const file of Array.from(files)) {
+                // 上传文件到后端
+                const formData = new FormData();
+                formData.append('file', file);
+
+                const uploadRes = await fetch(`${API_BASE}/api/files/upload`, {
+                    method: 'POST',
+                    body: formData,
+                });
+
+                if (!uploadRes.ok) throw new Error('Failed to upload file');
+                const uploadData = await uploadRes.json();
+
+                // 确定文件类型
+                let contentType = 'image';
+                if (file.type.startsWith('audio/')) contentType = 'voice';
+                else if (file.type.startsWith('video/')) contentType = 'video';
+
+                // 创建 note 关联到 step
+                await fetch(`${API_BASE}/api/notes/step/${stepId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        content_type: contentType,
+                        content: uploadData.url || uploadData.file_path,
+                        created_by: 'worker',
+                    }),
+                });
+            }
+
+            await loadData(); // 重新加载
+            alert('文件上传成功！');
+        } catch (e) {
+            console.error('Failed to upload file:', e);
+            alert('上传失败：' + (e instanceof Error ? e.message : '未知错误'));
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    // 删除已上传的文件
+    const deleteNote = async (noteId: string) => {
+        if (!confirm('确定要删除这个文件吗？')) return;
+
+        setSaving(true);
+        try {
+            await fetch(`${API_BASE}/api/notes/${noteId}`, {
+                method: 'DELETE',
+            });
+            await loadData();
+        } catch (e) {
+            console.error('Failed to delete note:', e);
+            alert('删除失败');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    // 删除任务
+    const deleteTask = async (taskId: string) => {
+        if (!confirm('确定要删除这个任务？该任务下的所有步骤也会被删除！')) return;
+
+        setSaving(true);
+        try {
+            await fetch(`${API_BASE}/api/tasks/${taskId}`, {
+                method: 'DELETE',
+            });
+            await loadData();
+        } catch (e) {
+            console.error('Failed to delete task:', e);
+            alert('删除失败');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    // 删除步骤
+    const deleteStep = async (stepId: string) => {
+        if (!confirm('确定要删除这个步骤？')) return;
+
+        setSaving(true);
+        try {
+            await fetch(`${API_BASE}/api/steps/${stepId}`, {
+                method: 'DELETE',
+            });
+            await loadData();
+        } catch (e) {
+            console.error('Failed to delete step:', e);
+            alert('删除失败');
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -258,7 +379,7 @@ export default function WorkerCollect() {
                         <div key={task.id} className="bg-white rounded-lg border border-slate-200 overflow-hidden">
                             {/* 一级：任务 */}
                             <div
-                                className="flex items-center gap-3 p-3 cursor-pointer hover:bg-slate-50"
+                                className="flex items-center gap-3 p-3 cursor-pointer hover:bg-slate-50 group"
                                 onClick={() => toggleTask(task.id)}
                             >
                                 {task.expanded ? (
@@ -273,99 +394,166 @@ export default function WorkerCollect() {
                                 <span className="text-xs text-slate-400 ml-auto">
                                     {task.steps?.length || 0} 个步骤
                                 </span>
+                                {/* 删除任务按钮 */}
+                                <button
+                                    className="p-1 rounded hover:bg-red-100 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    onClick={(e) => { e.stopPropagation(); deleteTask(task.id); }}
+                                    title="删除任务"
+                                >
+                                    <Trash2 className="h-4 w-4" />
+                                </button>
                             </div>
 
                             {/* 展开：步骤列表 */}
-                            {task.expanded && (
-                                <div className="border-t border-slate-100 bg-slate-50/50">
-                                    {(task.steps || []).map((step, stepIndex) => (
-                                        <div key={step.id} className="border-b border-slate-100 last:border-b-0">
-                                            {/* 二级：步骤 */}
-                                            <div
-                                                className="flex items-center gap-3 p-3 pl-10 cursor-pointer hover:bg-slate-100"
-                                                onClick={() => toggleStep(task.id, step.id)}
-                                            >
-                                                {step.expanded ? (
-                                                    <ChevronDown className="h-4 w-4 text-slate-400" />
-                                                ) : (
-                                                    <ChevronRight className="h-4 w-4 text-slate-400" />
-                                                )}
-                                                <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-medium text-xs">
-                                                    {stepIndex + 1}
-                                                </div>
-                                                <span className="text-slate-800">{step.name}</span>
-                                                {step.context_description && (
-                                                    <span className="text-xs text-emerald-600 ml-auto">✓ 已填写</span>
-                                                )}
-                                            </div>
-
-                                            {/* 展开：三级编辑区域 */}
-                                            {step.expanded && (
-                                                <div className="bg-white p-4 pl-16 space-y-4">
-                                                    {/* 文字描述 */}
-                                                    <div>
-                                                        <label className="block text-sm font-medium text-slate-600 mb-2">
-                                                            📝 操作说明
-                                                        </label>
-                                                        <textarea
-                                                            className="w-full h-32 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-indigo-400 resize-none"
-                                                            placeholder="描述这一步怎么操作..."
-                                                            value={step.context_description || ''}
-                                                            onChange={(e) => updateStepDescription(task.id, step.id, e.target.value)}
-                                                        />
+                            {
+                                task.expanded && (
+                                    <div className="border-t border-slate-100 bg-slate-50/50">
+                                        {(task.steps || []).map((step, stepIndex) => (
+                                            <div key={step.id} className="border-b border-slate-100 last:border-b-0">
+                                                {/* 二级：步骤 */}
+                                                <div
+                                                    className="flex items-center gap-3 p-3 pl-10 cursor-pointer hover:bg-slate-100 group"
+                                                    onClick={() => toggleStep(task.id, step.id)}
+                                                >
+                                                    {step.expanded ? (
+                                                        <ChevronDown className="h-4 w-4 text-slate-400" />
+                                                    ) : (
+                                                        <ChevronRight className="h-4 w-4 text-slate-400" />
+                                                    )}
+                                                    <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-600 flex items-center justify-center font-medium text-xs">
+                                                        {stepIndex + 1}
                                                     </div>
+                                                    <span className="text-slate-800">{step.name}</span>
+                                                    {step.context_description && (
+                                                        <span className="text-xs text-emerald-600 ml-auto">✓ 已填写</span>
+                                                    )}
+                                                    {/* 删除步骤按钮 */}
+                                                    <button
+                                                        className="p-1 rounded hover:bg-red-100 text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity ml-2"
+                                                        onClick={(e) => { e.stopPropagation(); deleteStep(step.id); }}
+                                                        title="删除步骤"
+                                                    >
+                                                        <Trash2 className="h-3 w-3" />
+                                                    </button>
+                                                </div>
 
-                                                    {/* 添加资料 */}
-                                                    <div>
-                                                        <label className="block text-sm font-medium text-slate-600 mb-2">
-                                                            📎 添加资料
-                                                        </label>
-                                                        <div className="flex gap-3">
-                                                            <button className="flex-1 h-16 bg-indigo-50 rounded-lg border border-dashed border-indigo-300 hover:bg-indigo-100 transition-all flex items-center justify-center gap-2">
-                                                                <Camera className="h-5 w-5 text-indigo-600" />
-                                                                <span className="text-sm font-medium text-indigo-600">拍照</span>
-                                                            </button>
-                                                            <button className="flex-1 h-16 bg-emerald-50 rounded-lg border border-dashed border-emerald-300 hover:bg-emerald-100 transition-all flex items-center justify-center gap-2">
-                                                                <Mic className="h-5 w-5 text-emerald-600" />
-                                                                <span className="text-sm font-medium text-emerald-600">录音</span>
-                                                            </button>
+                                                {/* 展开：三级编辑区域 - 左右布局 */}
+                                                {step.expanded && (
+                                                    <div className="bg-white p-4 pl-16">
+                                                        <div className="flex gap-4">
+                                                            {/* 左边：文本输入区域 */}
+                                                            <div className="flex-[2]">
+                                                                <label className="block text-sm font-medium text-slate-600 mb-2">
+                                                                    📝 操作说明
+                                                                </label>
+                                                                <textarea
+                                                                    className="w-full h-40 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-indigo-400 resize-none"
+                                                                    placeholder="描述这一步怎么操作..."
+                                                                    value={step.context_description || ''}
+                                                                    onChange={(e) => updateStepDescription(task.id, step.id, e.target.value)}
+                                                                />
+                                                            </div>
+
+                                                            {/* 中间：预览区 */}
+                                                            <div className="flex-1 min-w-[180px]">
+                                                                <label className="block text-sm font-medium text-slate-600 mb-2">
+                                                                    👁️ 已上传 {step.notes && step.notes.length > 0 && `(${step.notes.length})`}
+                                                                </label>
+                                                                <div className="h-40 border border-slate-200 rounded-lg bg-slate-50 p-2 overflow-y-auto">
+                                                                    {step.notes && step.notes.length > 0 ? (
+                                                                        <div className="grid grid-cols-2 gap-2">
+                                                                            {step.notes.map(note => (
+                                                                                <div key={note.id} className="relative group">
+                                                                                    {note.content_type === 'image' ? (
+                                                                                        <img
+                                                                                            src={`${API_BASE}${note.content}`}
+                                                                                            alt="uploaded"
+                                                                                            className="w-full h-16 object-cover rounded border border-slate-200 cursor-pointer hover:opacity-80"
+                                                                                            onClick={() => setPreviewImage(`${API_BASE}${note.content}`)}
+                                                                                        />
+                                                                                    ) : (
+                                                                                        <div className="w-full h-16 bg-slate-100 rounded flex items-center justify-center text-2xl">
+                                                                                            {note.content_type === 'voice' ? '🎤' : '🎬'}
+                                                                                        </div>
+                                                                                    )}
+                                                                                    {/* 删除按钮 */}
+                                                                                    <button
+                                                                                        className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                                                                                        onClick={(e) => { e.stopPropagation(); deleteNote(note.id); }}
+                                                                                    >
+                                                                                        <X className="h-3 w-3" />
+                                                                                    </button>
+                                                                                    <span className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[10px] px-1 truncate rounded-b">
+                                                                                        {note.content.split('/').pop()}
+                                                                                    </span>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="h-full flex items-center justify-center text-slate-400 text-xs">
+                                                                            暂无文件
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* 右边：上传按钮 */}
+                                                            <div className="w-32">
+                                                                <label className="block text-sm font-medium text-slate-600 mb-2">
+                                                                    📎 上传
+                                                                </label>
+                                                                <div className="h-40 border-2 border-dashed border-slate-300 rounded-lg bg-slate-50 hover:bg-indigo-50 hover:border-indigo-400 transition-all cursor-pointer flex flex-col items-center justify-center">
+                                                                    <input
+                                                                        type="file"
+                                                                        className="hidden"
+                                                                        id={`file-upload-${step.id}`}
+                                                                        accept="image/*,audio/*,video/*"
+                                                                        multiple
+                                                                        onChange={(e) => handleFileUpload(step.id, e.target.files)}
+                                                                    />
+                                                                    <label htmlFor={`file-upload-${step.id}`} className="cursor-pointer text-center">
+                                                                        <Plus className="h-8 w-8 text-indigo-500 mx-auto mb-1" />
+                                                                        <span className="text-xs text-slate-500">点击上传</span>
+                                                                    </label>
+                                                                </div>
+                                                            </div>
                                                         </div>
                                                     </div>
+                                                )}
+                                            </div>
+                                        ))}
+
+                                        {/* 添加步骤 */}
+                                        <div className="p-3 pl-10">
+                                            {addingStepTaskId === task.id ? (
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="text"
+                                                        className="flex-1 px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:border-indigo-400"
+                                                        placeholder="步骤名称，如：读取数值"
+                                                        value={newItemName}
+                                                        onChange={(e) => setNewItemName(e.target.value)}
+                                                        onKeyDown={(e) => e.key === 'Enter' && addStep(task.id)}
+                                                        autoFocus
+                                                    />
+                                                    <Button size="sm" onClick={() => addStep(task.id)} disabled={saving}>
+                                                        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : '添加'}
+                                                    </Button>
+                                                    <Button size="sm" variant="outline" onClick={() => { setAddingStepTaskId(null); setNewItemName(''); }}>取消</Button>
                                                 </div>
+                                            ) : (
+                                                <button
+                                                    className="flex items-center gap-2 text-sm text-slate-400 hover:text-indigo-600"
+                                                    onClick={(e) => { e.stopPropagation(); setAddingStepTaskId(task.id); setAddingTaskId(null); setNewItemName(''); }}
+                                                >
+                                                    <Plus className="h-4 w-4" />
+                                                    添加步骤
+                                                </button>
                                             )}
                                         </div>
-                                    ))}
-
-                                    {/* 添加步骤 */}
-                                    <div className="p-3 pl-10">
-                                        {addingStepTaskId === task.id ? (
-                                            <div className="flex items-center gap-2">
-                                                <input
-                                                    type="text"
-                                                    className="flex-1 px-3 py-2 border border-slate-200 rounded text-sm focus:outline-none focus:border-indigo-400"
-                                                    placeholder="步骤名称，如：读取数值"
-                                                    value={newItemName}
-                                                    onChange={(e) => setNewItemName(e.target.value)}
-                                                    onKeyDown={(e) => e.key === 'Enter' && addStep(task.id)}
-                                                    autoFocus
-                                                />
-                                                <Button size="sm" onClick={() => addStep(task.id)} disabled={saving}>
-                                                    {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : '添加'}
-                                                </Button>
-                                                <Button size="sm" variant="outline" onClick={() => { setAddingStepTaskId(null); setNewItemName(''); }}>取消</Button>
-                                            </div>
-                                        ) : (
-                                            <button
-                                                className="flex items-center gap-2 text-sm text-slate-400 hover:text-indigo-600"
-                                                onClick={(e) => { e.stopPropagation(); setAddingStepTaskId(task.id); setAddingTaskId(null); setNewItemName(''); }}
-                                            >
-                                                <Plus className="h-4 w-4" />
-                                                添加步骤
-                                            </button>
-                                        )}
                                     </div>
-                                </div>
-                            )}
+                                )
+                            }
                         </div>
                     ))}
 
@@ -405,19 +593,42 @@ export default function WorkerCollect() {
                         </div>
                     )}
                 </div>
-            </main>
+            </main >
 
             {/* 底部按钮 */}
-            <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4">
+            < div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4" >
                 <Button
                     className="w-full py-6 text-lg bg-indigo-600 hover:bg-indigo-700"
                     onClick={handleSubmit}
                     disabled={saving}
                 >
                     {saving ? <Loader2 className="h-5 w-5 animate-spin mr-2" /> : null}
-                    填完了，交给专家整理 →
+                    填完了，去整理 →
                 </Button>
-            </div>
-        </div>
+            </div >
+
+            {/* 图片预览模态框 */}
+            {
+                previewImage && (
+                    <div
+                        className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+                        onClick={() => setPreviewImage(null)}
+                    >
+                        <button
+                            className="absolute top-4 right-4 w-10 h-10 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center"
+                            onClick={() => setPreviewImage(null)}
+                        >
+                            <X className="h-6 w-6 text-white" />
+                        </button>
+                        <img
+                            src={previewImage}
+                            alt="预览"
+                            className="max-w-full max-h-full object-contain rounded-lg"
+                            onClick={(e) => e.stopPropagation()}
+                        />
+                    </div>
+                )
+            }
+        </div >
     );
 }

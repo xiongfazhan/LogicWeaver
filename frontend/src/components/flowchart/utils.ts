@@ -184,6 +184,110 @@ export function workflowToFlowchart(
   return { nodes, edges };
 }
 
+/** 任务数据类型 */
+interface TaskData {
+  id: string;
+  name: string;
+  task_order: number;
+  steps: StepData[];
+}
+
+/** 步骤数据 */
+interface StepData {
+  id: string;
+  name: string;
+  step_order: number;
+  status: string;
+  context_image_url?: string;
+}
+
+/** AI 分析结果 */
+interface AnalysisResponse {
+  step_id: string;
+  result: {
+    contract: StepContract;
+  };
+}
+
+/**
+ * 将任务列表转换为 ReactFlow 节点和边
+ * 支持任务分组显示
+ */
+export function tasksToFlowchart(
+  tasks: TaskData[],
+  analysisResults?: AnalysisResponse[]
+): {
+  nodes: FlowchartNode[];
+  edges: FlowchartEdge[];
+} {
+  const nodes: FlowchartNode[] = [];
+  const edges: FlowchartEdge[] = [];
+
+  // 全局步骤计数器（用于垂直定位）
+  let globalStepIndex = 0;
+  // 上一个步骤的 ID（用于创建边）
+  let previousStepId: string | null = null;
+
+  tasks.forEach((task, taskIndex) => {
+    // 遍历任务中的步骤
+    task.steps.forEach((step, stepIndexInTask) => {
+      // 查找对应的数据契约
+      const analysisResult = analysisResults?.find(r => r.step_id === step.id);
+      const contract = analysisResult?.result.contract;
+
+      // 转换输入输出格式
+      const inputs: DataFieldInfo[] = contract?.inputs?.map(f => ({
+        name: f.name,
+        type: f.type,
+      })) || [];
+
+      const outputs: DataFieldInfo[] = contract?.outputs?.map(f => ({
+        name: f.name,
+        type: f.type,
+      })) || [];
+
+      const nodeData: StepNodeData = {
+        title: `${taskIndex + 1}.${stepIndexInTask + 1} ${step.name}`,
+        thumbnailUrl: step.context_image_url,
+        status: step.status === 'completed' ? 'completed' : 'pending',
+        order: globalStepIndex + 1,
+        businessIntent: contract?.business_intent,
+        inputs,
+        outputs,
+      };
+
+      const node: FlowchartNode = {
+        id: step.id,
+        type: 'stepNode',
+        position: { x: START_X, y: START_Y + globalStepIndex * VERTICAL_SPACING },
+        data: nodeData,
+      };
+
+      nodes.push(node);
+
+      // 创建从上一步骤到当前步骤的边
+      if (previousStepId) {
+        const edge: FlowchartEdge = {
+          id: `${previousStepId}-to-${step.id}`,
+          source: previousStepId,
+          target: step.id,
+          type: 'branchEdge',
+          data: {
+            edgeType: 'pass',
+            label: '',
+          } as BranchEdgeData,
+        };
+        edges.push(edge);
+      }
+
+      previousStepId = step.id;
+      globalStepIndex++;
+    });
+  });
+
+  return { nodes, edges };
+}
+
 /**
  * 计算节点的自动布局位置
  * 使用简单的垂直布局算法

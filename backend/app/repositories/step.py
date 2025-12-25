@@ -30,6 +30,7 @@ class StepRepository:
             .options(
                 selectinload(WorkflowStep.examples),
                 selectinload(WorkflowStep.routing_branches),
+                selectinload(WorkflowStep.notes),
             )
             .where(WorkflowStep.id == step_id)
         )
